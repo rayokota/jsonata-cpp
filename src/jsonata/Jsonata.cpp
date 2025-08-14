@@ -2142,11 +2142,107 @@ std::any Jsonata::evaluateBlock(std::shared_ptr<Parser::Symbol> expr,
 }
 
 /* static */ nlohmann::json Jsonata::anyToJson(const std::any& value) {
-    // Convert via ordered JSON to preserve engine semantics, then cast to
-    // unordered
-    nlohmann::ordered_json ordered = anyToOrderedJson(value);
-    // Construct nlohmann::json from ordered JSON
-    return nlohmann::json::parse(ordered.dump());
+    if (!value.has_value()) return nlohmann::json();
+
+    // Canonicalize numeric types similar to anyToOrderedJson
+    try {
+        if (Utils::isNumeric(value)) {
+            std::any canon = Utils::convertNumber(value);
+            if (canon.type() != value.type()) {
+                return anyToJson(canon);
+            }
+        }
+    } catch (...) {
+        // Ignore conversion errors here; fall back to original value
+    }
+
+    const std::type_info& type = value.type();
+    if (type == typeid(bool))
+        return nlohmann::json(std::any_cast<bool>(value));
+    if (type == typeid(double))
+        return nlohmann::json(std::any_cast<double>(value));
+    if (type == typeid(int64_t))
+        return nlohmann::json(std::any_cast<int64_t>(value));
+    if (type == typeid(uint64_t))
+        return nlohmann::json(std::any_cast<uint64_t>(value));
+    if (type == typeid(std::string))
+        return nlohmann::json(std::any_cast<std::string>(value));
+
+    if (type == typeid(Utils::JList)) {
+        nlohmann::json arr = nlohmann::json::array();
+        const auto& jlist = std::any_cast<const Utils::JList&>(value);
+        for (const auto& item : jlist) arr.push_back(anyToJson(item));
+        return arr;
+    }
+    if (type == typeid(std::vector<std::any>)) {
+        nlohmann::json arr = nlohmann::json::array();
+        const auto& vec = std::any_cast<const std::vector<std::any>&>(value);
+        for (const auto& item : vec) arr.push_back(anyToJson(item));
+        return arr;
+    }
+    if (type == typeid(nlohmann::ordered_map<std::string, std::any>)) {
+        nlohmann::json obj = nlohmann::json::object();
+        const auto& map =
+            std::any_cast<const nlohmann::ordered_map<std::string, std::any>&>(
+                value);
+        for (const auto& [k, v] : map) obj[k] = anyToJson(v);
+        return obj;
+    }
+
+    // Ignore function symbols
+    if (type == typeid(std::shared_ptr<Parser::Symbol>)) {
+        return nlohmann::json();
+    }
+
+    // Directly handle nlohmann::json returned from custom functions
+    if (type == typeid(nlohmann::json)) {
+        return std::any_cast<nlohmann::json>(value);
+    }
+
+    // Handle nlohmann::ordered_json without dump/parse by converting
+    if (type == typeid(nlohmann::ordered_json)) {
+        const auto& oj = std::any_cast<const nlohmann::ordered_json&>(value);
+
+        // Recursive lambda to convert ordered_json to json
+        std::function<nlohmann::json(const nlohmann::ordered_json&)> convert =
+            [&](const nlohmann::ordered_json& j) -> nlohmann::json {
+            if (j.is_null()) return nlohmann::json();
+            if (j.is_boolean()) return nlohmann::json(j.get<bool>());
+            if (j.is_number_integer()) {
+                int64_t si = 0;
+                try {
+                    si = j.get<int64_t>();
+                    return nlohmann::json(static_cast<int64_t>(si));
+                } catch (...) {
+                }
+                uint64_t ui = j.get<uint64_t>();
+                return nlohmann::json(static_cast<uint64_t>(ui));
+            }
+            if (j.is_number_unsigned())
+                return nlohmann::json(j.get<uint64_t>());
+            if (j.is_number_float())
+                return nlohmann::json(j.get<double>());
+            if (j.is_string())
+                return nlohmann::json(j.get<std::string>());
+            if (j.is_array()) {
+                nlohmann::json arr = nlohmann::json::array();
+                for (const auto& el : j) arr.push_back(convert(el));
+                return arr;
+            }
+            if (j.is_object()) {
+                nlohmann::json obj = nlohmann::json::object();
+                for (auto it = j.begin(); it != j.end(); ++it) {
+                    obj[it.key()] = convert(it.value());
+                }
+                return obj;
+            }
+            return nlohmann::json();
+        };
+
+        return convert(oj);
+    }
+
+    return nlohmann::json();
 }
 
 // Missing public API methods from Java

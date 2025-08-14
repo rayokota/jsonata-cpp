@@ -1,0 +1,15 @@
+# Config file for the jsonata package
+#
+# It defines the following imported target:
+#   jsonata::jsonata
+
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+# json library used by jsonata
+find_dependency(nlohmann_json)
+
+# Load the targets file
+include("${CMAKE_CURRENT_LIST_DIR}/jsonataTargets.cmake")
+
+check_required_components(jsonata)

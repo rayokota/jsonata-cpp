@@ -60,7 +60,19 @@ target_include_directories(jsonata PUBLIC
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-target_link_libraries(jsonata PUBLIC nlohmann_json::nlohmann_json)
+# Link dependency publicly. When fetched via FetchContent, the underlying
+# target is a build target (not IMPORTED) which breaks install(EXPORT ...).
+# Use generator expressions to link the build target for the build-tree and
+# the imported target name for the install-tree.
+if(TARGET nlohmann_json)
+    target_link_libraries(jsonata
+        PUBLIC
+            $<BUILD_INTERFACE:nlohmann_json>
+            $<INSTALL_INTERFACE:nlohmann_json::nlohmann_json>
+    )
+else()
+    target_link_libraries(jsonata PUBLIC nlohmann_json::nlohmann_json)
+endif()
 
 # Optionally build tests
 option(JSONATA_BUILD_TESTS "Build JSONata C++ tests" ON)

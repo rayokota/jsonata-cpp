@@ -60,18 +60,25 @@ target_include_directories(jsonata PUBLIC
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-# Link dependency publicly. When fetched via FetchContent, the underlying
-# target is a build target (not IMPORTED) which breaks install(EXPORT ...).
-# Use generator expressions to link the build target for the build-tree and
-# the imported target name for the install-tree.
-if(TARGET nlohmann_json)
-    target_link_libraries(jsonata
-        PUBLIC
-            $<BUILD_INTERFACE:nlohmann_json>
-            $<INSTALL_INTERFACE:nlohmann_json::nlohmann_json>
+# Link dependency publicly. Avoid referencing non-exported build targets in the
+# install tree by recording only the imported name there, while using the
+# available build target (if any) for the build tree.
+set(_JSONATA_NLOHMANN_BUILD_TARGET "")
+if(TARGET nlohmann_json::nlohmann_json)
+    set(_JSONATA_NLOHMANN_BUILD_TARGET nlohmann_json::nlohmann_json)
+elseif(TARGET nlohmann_json)
+    set(_JSONATA_NLOHMANN_BUILD_TARGET nlohmann_json)
+endif()
+
+if(_JSONATA_NLOHMANN_BUILD_TARGET)
+    target_link_libraries(jsonata PUBLIC
+        $<BUILD_INTERFACE:${_JSONATA_NLOHMANN_BUILD_TARGET}>
+        $<INSTALL_INTERFACE:nlohmann_json::nlohmann_json>
     )
 else()
-    target_link_libraries(jsonata PUBLIC nlohmann_json::nlohmann_json)
+    target_link_libraries(jsonata PUBLIC
+        $<INSTALL_INTERFACE:nlohmann_json::nlohmann_json>
+    )
 endif()
 
 # Optionally build tests

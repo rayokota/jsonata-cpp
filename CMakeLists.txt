@@ -10,7 +10,7 @@ include(GNUInstallDirs)
 include(FetchContent)
 
 # Find nlohmann_json or fetch if not found
-find_package(nlohmann_json QUIET)
+find_package(nlohmann_json CONFIG QUIET)
 if(NOT nlohmann_json_FOUND)
     FetchContent_Declare(
             nlohmann_json

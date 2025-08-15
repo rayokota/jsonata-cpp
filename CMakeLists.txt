@@ -18,6 +18,8 @@ if(NOT nlohmann_json_FOUND)
             GIT_TAG        v3.12.0
     )
     FetchContent_MakeAvailable(nlohmann_json)
+    # Mark that we used FetchContent
+    set(JSONATA_USED_FETCHCONTENT_JSON TRUE)
 endif()
 
 # Collect source files

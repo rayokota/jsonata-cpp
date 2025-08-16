@@ -90,17 +90,6 @@ else()
     )
 endif()
 
-if(_JSONATA_NLOHMANN_BUILD_TARGET)
-    target_link_libraries(jsonata PUBLIC
-        $<BUILD_INTERFACE:${_JSONATA_NLOHMANN_BUILD_TARGET}>
-        $<INSTALL_INTERFACE:nlohmann_json::nlohmann_json>
-    )
-else()
-    target_link_libraries(jsonata PUBLIC
-        $<INSTALL_INTERFACE:nlohmann_json::nlohmann_json>
-    )
-endif()
-
 # Optionally build tests
 option(JSONATA_BUILD_TESTS "Build JSONata C++ tests" ON)
 

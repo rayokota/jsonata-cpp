@@ -42,6 +42,8 @@
 
 #include <chrono>
 #include <cstdint>
+#include <memory>
+#include <unordered_map>
 #include <regex>
 #include <string>
 #include <vector>

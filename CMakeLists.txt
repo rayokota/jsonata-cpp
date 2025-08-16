@@ -114,6 +114,9 @@ if(JSONATA_BUILD_TESTS)
     )
     FetchContent_MakeAvailable(googletest)
 
+    # Use CMake Threads package for cross-platform thread linkage
+    find_package(Threads REQUIRED)
+
     # Collect all Google Test format test files
     set(TEST_SOURCES
         test/ArrayTest.cpp
@@ -140,7 +143,7 @@ if(JSONATA_BUILD_TESTS)
       jsonata
       gtest_main
       gtest
-      pthread
+      Threads::Threads
     )
 
     # Create test generator executable
@@ -188,7 +191,7 @@ if(JSONATA_BUILD_TESTS)
                 jsonata
                 gtest_main 
                 gtest 
-                pthread
+                Threads::Threads
             )
             add_dependencies(jsonata_generated_tests generate_tests)
             

@@ -5,6 +5,21 @@
             "ignoreError": true,
             "reason": "timegm() cannot handle dates before 1900"
         },
+        {
+            "name": "tail-recursion/case001.json",
+            "depth": 202,
+            "reason": "Windows has lower stack limit"
+        },
+        {
+            "name": "tail-recursion/case002.json",
+            "depth": 202,
+            "reason": "Windows has lower stack limit"
+        },
+        {
+            "name": "tail-recursion/case005.json",
+            "depth": 200,
+            "reason": "Windows has lower stack limit"
+        },
         
 
         {

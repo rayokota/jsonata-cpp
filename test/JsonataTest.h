@@ -18,6 +18,7 @@ public:
         std::optional<bool> ignoreError;
         std::optional<nlohmann::ordered_json> alternateResult;
         std::optional<std::string> alternateCode;
+        std::optional<int> overrideDepth;
         std::string reason;
     };
 

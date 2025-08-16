@@ -2438,11 +2438,6 @@ nlohmann::ordered_json Jsonata::evaluate(const nlohmann::ordered_json& input,
     // concurrent mutations of the shared environment.
     std::shared_ptr<Frame> exec_env = createFrame(environment_);
     if (bindings != nullptr) {
-        // Propagate any timebox/runtime bounds from the provided bindings frame
-        // so recursion/timeout checks are active during evaluation
-        if (bindings->hasRuntimeBounds()) {
-            exec_env->setRuntimeBounds(bindings->getTimeout(), bindings->getRecursionDepth());
-        }
         for (const auto& [key, value] : bindings->getBindings()) {
             exec_env->bind(key, value);
         }
@@ -2519,9 +2514,6 @@ nlohmann::json Jsonata::evaluate(const nlohmann::json& input,
 
     std::shared_ptr<Frame> exec_env = createFrame(environment_);
     if (bindings != nullptr) {
-        if (bindings->hasRuntimeBounds()) {
-            exec_env->setRuntimeBounds(bindings->getTimeout(), bindings->getRecursionDepth());
-        }
         for (const auto& [key, value] : bindings->getBindings()) {
             exec_env->bind(key, value);
         }

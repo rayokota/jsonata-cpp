@@ -55,8 +55,12 @@ target_compile_features(jsonata PUBLIC cxx_std_17)
 # Compiler options
 target_compile_options(jsonata
         PRIVATE
-        $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:
-        -Wall -Wno-unused-variable -Wno-unused-lambda-capture>
+        # Common warnings
+        $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:-Wall -Wno-unused-variable>
+        # Clang-only suppression
+        $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-Wno-unused-lambda-capture>
+        # MSVC: ensure source files are treated as UTF-8 to avoid codepage warnings
+        $<$<CXX_COMPILER_ID:MSVC>:/utf-8>
 )
 
 # Set include directories for the library
@@ -191,7 +195,8 @@ if(JSONATA_BUILD_TESTS)
             # Add to testing (only if Google Test is available)
             if(TARGET gtest)
                 include(GoogleTest)
-                gtest_discover_tests(jsonata_generated_tests)
+                gtest_discover_tests(jsonata_generated_tests
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             endif()
         endif()
     endif()
@@ -250,5 +255,6 @@ install(FILES
 if(JSONATA_BUILD_TESTS)
     enable_testing()
     include(GoogleTest)
-    gtest_discover_tests(jsonata_tests)
+    gtest_discover_tests(jsonata_tests
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 endif()

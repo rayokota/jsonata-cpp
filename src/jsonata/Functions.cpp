@@ -4634,7 +4634,7 @@ std::optional<int64_t> Functions::dateTimeToMillis(const std::string& timestamp,
                 tm.tm_sec = 0;
 
                 // Convert to UTC time
-                std::time_t time = timegm(&tm);
+                std::time_t time = timegm_utc(&tm);
                 return time * 1000L;
             } catch (...) {
                 // Java throws ParseException which becomes D3110
@@ -4713,7 +4713,7 @@ std::optional<int64_t> Functions::dateTimeToMillis(const std::string& timestamp,
             }
 
             if (parsed) {
-                return timegm(&tm) * 1000L + milliseconds;
+                return timegm_utc(&tm) * 1000L + milliseconds;
             }
 
         } catch (...) {
@@ -4733,7 +4733,7 @@ std::optional<int64_t> Functions::dateTimeToMillis(const std::string& timestamp,
                 std::string remaining;
                 ss >> remaining;
                 if (remaining.empty()) {
-                    return timegm(&tm) * 1000L;
+                    return timegm_utc(&tm) * 1000L;
                 }
             }
         } catch (...) {
@@ -4755,7 +4755,7 @@ std::optional<int64_t> Functions::dateTimeToMillis(const std::string& timestamp,
                 std::string remaining;
                 ss >> remaining;
                 if (remaining.empty()) {
-                    return timegm(&tm) * 1000L;
+                    return timegm_utc(&tm) * 1000L;
                 }
             }
         } catch (...) {

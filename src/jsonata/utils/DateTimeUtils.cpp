@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cmath>
 #include <ctime>
+#include <jsonata/Utils.h>
 #include <iomanip>
 #include <iostream>
 #include <numeric>
@@ -1177,7 +1178,7 @@ int64_t DateTimeUtils::parseDateTime(const std::string& timestamp,
             tm.tm_mday =
                 dayOfYear;  // This will automatically normalize the date
 
-            timegm(&tm);  // This normalizes the date and sets tm_mon and
+            timegm_utc(&tm);  // This normalizes the date and sets tm_mon and
                           // tm_mday correctly
 
             components['Y'] = year;
@@ -1241,7 +1242,7 @@ int64_t DateTimeUtils::parseDateTime(const std::string& timestamp,
             tm.tm_mday =
                 dayOfYear;  // This will automatically normalize the date
 
-            timegm(&tm);  // This normalizes the date and sets tm_mon and
+            timegm_utc(&tm);  // This normalizes the date and sets tm_mon and
                           // tm_mday correctly
 
             components['Y'] = year;
@@ -1266,7 +1267,7 @@ int64_t DateTimeUtils::parseDateTime(const std::string& timestamp,
                 tm.tm_year = year - 1900;
                 tm.tm_yday = dayOfYear - 1;  // tm_yday is 0-based
 
-                timegm(&tm);  // This will set tm_mon and tm_mday correctly
+                timegm_utc(&tm);  // This will set tm_mon and tm_mday correctly
 
                 components['Y'] = year;
                 components['M'] = tm.tm_mon + 1;
@@ -1476,7 +1477,7 @@ int64_t DateTimeUtils::parseDateTime(const std::string& timestamp,
     tm.tm_sec = components['s'];
 
     // Convert to UTC milliseconds (Java line 1048)
-    std::time_t time = timegm(&tm);
+    std::time_t time = timegm_utc(&tm);
     int64_t millis = static_cast<int64_t>(time) * 1000 + components['f'];
 
     // Apply timezone adjustments (Java lines 1049-1053)

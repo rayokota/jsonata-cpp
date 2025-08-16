@@ -84,6 +84,10 @@ class Frame {
 
     // Runtime bounds
     void setRuntimeBounds(int64_t timeout, int64_t maxRecursionDepth);
+    // Inherit runtime bounds from another frame (used to propagate test timeboxing)
+    bool hasRuntimeBounds() const { return timebox_ != nullptr; }
+    int64_t getTimeout() const { return timeout_; }
+    int64_t getRecursionDepth() const { return recursionDepth_; }
 
     // Evaluation callbacks
     void setEvaluateEntryCallback(EntryCallback callback);

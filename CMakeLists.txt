@@ -197,6 +197,7 @@ if(JSONATA_BUILD_TESTS)
                 include(GoogleTest)
                 gtest_discover_tests(jsonata_generated_tests
                     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                )
             endif()
         endif()
     endif()
@@ -257,4 +258,5 @@ if(JSONATA_BUILD_TESTS)
     include(GoogleTest)
     gtest_discover_tests(jsonata_tests
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
 endif()

@@ -18,10 +18,10 @@
 #pragma once
 
 #include <any>
+#include <ctime>
 #include <functional>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -29,6 +29,15 @@
 #include <vector>
 
 namespace jsonata {
+
+// Cross-platform UTC time conversion: timegm on POSIX, _mkgmtime on Windows
+static inline std::time_t timegm_utc(std::tm* tm) {
+#if defined(_WIN32)
+    return _mkgmtime(tm);
+#else
+    return timegm(tm);
+#endif
+}
 
 // Forward declarations
 class JFunction;

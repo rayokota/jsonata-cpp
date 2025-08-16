@@ -42,9 +42,11 @@
 
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <regex>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace jsonata {
 namespace utils {

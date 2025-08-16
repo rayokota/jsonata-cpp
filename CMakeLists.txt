@@ -150,7 +150,7 @@ if(JSONATA_BUILD_TESTS)
     # Custom command to generate test files
     add_custom_command(
         OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/test/gen/generated.stamp
-        COMMAND ${CMAKE_CURRENT_BINARY_DIR}/generate
+        COMMAND $<TARGET_FILE:generate>
         COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_SOURCE_DIR}/test/gen/generated.stamp
         DEPENDS generate
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -167,7 +167,7 @@ if(JSONATA_BUILD_TESTS)
 
     # Convenience target to just run the generator
     add_custom_target(run_generator
-        COMMAND ${CMAKE_CURRENT_BINARY_DIR}/generate
+        COMMAND $<TARGET_FILE:generate>
         DEPENDS generate
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Running JSONata test generator"

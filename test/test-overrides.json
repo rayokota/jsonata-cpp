@@ -2,7 +2,7 @@
     "override": [
         {
             "name": "function-tomillis/parseDateTime.json_6",
-            "alternateResult": -1000,
+            "ignoreError": true,
             "reason": "timegm() cannot handle dates before 1900"
         },
         

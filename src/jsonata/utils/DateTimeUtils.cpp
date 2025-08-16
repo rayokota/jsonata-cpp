@@ -1478,6 +1478,11 @@ int64_t DateTimeUtils::parseDateTime(const std::string& timestamp,
 
     // Convert to UTC milliseconds (Java line 1048)
     std::time_t time = timegm_utc(&tm);
+    // Guard against platforms where timegm cannot represent dates before 1900
+    // which would return -1 and lead to a bogus -1000 ms result
+    if (time == static_cast<std::time_t>(-1)) {
+        throw JException("D3110", 0, timestamp);
+    }
     int64_t millis = static_cast<int64_t>(time) * 1000 + components['f'];
 
     // Apply timezone adjustments (Java lines 1049-1053)

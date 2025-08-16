@@ -4781,7 +4781,7 @@ std::optional<int64_t> Functions::dateTimeToMillis(const std::string& timestamp,
             // Format validation errors should bubble up (D3132, D3133, D3136,
             // etc.)
             if (errorCode == "D3132" || errorCode == "D3133" ||
-                errorCode == "D3136") {
+                errorCode == "D3136" || errorCode == "D3110") {
                 throw;
             }
 

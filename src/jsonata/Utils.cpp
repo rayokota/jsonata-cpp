@@ -43,7 +43,11 @@ bool Utils::isNumeric(const std::any& v) {
     if (!v.has_value()) return false;
 
     try {
-        if (v.type() == typeid(int64_t) || v.type() == typeid(uint64_t)) {
+        // Support common integral types across platforms
+        if (v.type() == typeid(int64_t) || v.type() == typeid(uint64_t) ||
+            v.type() == typeid(long long) || v.type() == typeid(unsigned long long) ||
+            v.type() == typeid(long) || v.type() == typeid(unsigned long) ||
+            v.type() == typeid(int) || v.type() == typeid(unsigned int)) {
             return true;
         }
 
@@ -67,7 +71,10 @@ bool Utils::isIntegral(const std::any& v) {
 
     // Only accept integer types (signed/unsigned), not double or float (matches
     // Java Long/Integer check)
-    return v.type() == typeid(int64_t) || v.type() == typeid(uint64_t);
+    return v.type() == typeid(int64_t) || v.type() == typeid(uint64_t) ||
+           v.type() == typeid(long long) || v.type() == typeid(unsigned long long) ||
+           v.type() == typeid(long) || v.type() == typeid(unsigned long) ||
+           v.type() == typeid(int) || v.type() == typeid(unsigned int);
 }
 
 int64_t Utils::toLong(const std::any& v) {
@@ -78,6 +85,18 @@ int64_t Utils::toLong(const std::any& v) {
         return std::any_cast<int64_t>(v);
     if (v.type() == typeid(uint64_t))
         return static_cast<int64_t>(std::any_cast<uint64_t>(v));
+    if (v.type() == typeid(long long))
+        return static_cast<int64_t>(std::any_cast<long long>(v));
+    if (v.type() == typeid(unsigned long long))
+        return static_cast<int64_t>(std::any_cast<unsigned long long>(v));
+    if (v.type() == typeid(long))
+        return static_cast<int64_t>(std::any_cast<long>(v));
+    if (v.type() == typeid(unsigned long))
+        return static_cast<int64_t>(std::any_cast<unsigned long>(v));
+    if (v.type() == typeid(int))
+        return static_cast<int64_t>(std::any_cast<int>(v));
+    if (v.type() == typeid(unsigned int))
+        return static_cast<int64_t>(std::any_cast<unsigned int>(v));
     if (v.type() == typeid(double))
         return static_cast<int64_t>(std::any_cast<double>(v));
     // Not a numeric type we know how to coerce
@@ -93,6 +112,18 @@ double Utils::toDouble(const std::any& v) {
         return static_cast<double>(std::any_cast<int64_t>(v));
     if (v.type() == typeid(uint64_t))
         return static_cast<double>(std::any_cast<uint64_t>(v));
+    if (v.type() == typeid(long long))
+        return static_cast<double>(std::any_cast<long long>(v));
+    if (v.type() == typeid(unsigned long long))
+        return static_cast<double>(std::any_cast<unsigned long long>(v));
+    if (v.type() == typeid(long))
+        return static_cast<double>(std::any_cast<long>(v));
+    if (v.type() == typeid(unsigned long))
+        return static_cast<double>(std::any_cast<unsigned long>(v));
+    if (v.type() == typeid(int))
+        return static_cast<double>(std::any_cast<int>(v));
+    if (v.type() == typeid(unsigned int))
+        return static_cast<double>(std::any_cast<unsigned int>(v));
     // Not a numeric type we know how to coerce
     throw JException("D1001", 0, v);
 }
@@ -109,8 +140,10 @@ bool Utils::isPrimitive(const std::any& value) {
 bool Utils::isNumber(const std::any& value) {
     return value.has_value() &&
            (value.type() == typeid(double) ||
-            value.type() == typeid(int64_t) ||
-            value.type() == typeid(uint64_t));
+            value.type() == typeid(int64_t) || value.type() == typeid(uint64_t) ||
+            value.type() == typeid(long long) || value.type() == typeid(unsigned long long) ||
+            value.type() == typeid(long) || value.type() == typeid(unsigned long) ||
+            value.type() == typeid(int) || value.type() == typeid(unsigned int));
 }
 
 bool Utils::isString(const std::any& value) {

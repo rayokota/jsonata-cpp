@@ -2073,6 +2073,19 @@ std::any Jsonata::evaluateBlock(std::shared_ptr<Parser::Symbol> expr,
         return nlohmann::ordered_json(std::any_cast<int64_t>(value));
     if (type == typeid(uint64_t))
         return nlohmann::ordered_json(std::any_cast<uint64_t>(value));
+    // Cross-platform support for additional integral types (e.g., long/long long)
+    if (type == typeid(long long))
+        return nlohmann::ordered_json(static_cast<int64_t>(std::any_cast<long long>(value)));
+    if (type == typeid(unsigned long long))
+        return nlohmann::ordered_json(static_cast<uint64_t>(std::any_cast<unsigned long long>(value)));
+    if (type == typeid(long))
+        return nlohmann::ordered_json(static_cast<int64_t>(std::any_cast<long>(value)));
+    if (type == typeid(unsigned long))
+        return nlohmann::ordered_json(static_cast<uint64_t>(std::any_cast<unsigned long>(value)));
+    if (type == typeid(int))
+        return nlohmann::ordered_json(static_cast<int64_t>(std::any_cast<int>(value)));
+    if (type == typeid(unsigned int))
+        return nlohmann::ordered_json(static_cast<uint64_t>(std::any_cast<unsigned int>(value)));
     if (type == typeid(std::string))
         return nlohmann::ordered_json(std::any_cast<std::string>(value));
     if (type == typeid(Utils::JList)) {
@@ -2165,6 +2178,19 @@ std::any Jsonata::evaluateBlock(std::shared_ptr<Parser::Symbol> expr,
         return nlohmann::json(std::any_cast<int64_t>(value));
     if (type == typeid(uint64_t))
         return nlohmann::json(std::any_cast<uint64_t>(value));
+    // Cross-platform support for additional integral types (e.g., long/long long)
+    if (type == typeid(long long))
+        return nlohmann::json(static_cast<int64_t>(std::any_cast<long long>(value)));
+    if (type == typeid(unsigned long long))
+        return nlohmann::json(static_cast<uint64_t>(std::any_cast<unsigned long long>(value)));
+    if (type == typeid(long))
+        return nlohmann::json(static_cast<int64_t>(std::any_cast<long>(value)));
+    if (type == typeid(unsigned long))
+        return nlohmann::json(static_cast<uint64_t>(std::any_cast<unsigned long>(value)));
+    if (type == typeid(int))
+        return nlohmann::json(static_cast<int64_t>(std::any_cast<int>(value)));
+    if (type == typeid(unsigned int))
+        return nlohmann::json(static_cast<uint64_t>(std::any_cast<unsigned int>(value)));
     if (type == typeid(std::string))
         return nlohmann::json(std::any_cast<std::string>(value));
 

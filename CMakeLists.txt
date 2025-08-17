@@ -182,6 +182,14 @@ if(JSONATA_BUILD_TESTS)
                 gtest 
                 Threads::Threads
             )
+            # Windows-only: increase stack size to 8MB for generated tests
+            if(WIN32)
+                if(MSVC)
+                    target_link_options(jsonata_generated_tests PRIVATE /STACK:8388608)
+                else()
+                    target_link_options(jsonata_generated_tests PRIVATE -Wl,--stack,8388608)
+                endif()
+            endif()
             add_dependencies(jsonata_generated_tests generate_tests)
             
             # Add to testing (only if Google Test is available)

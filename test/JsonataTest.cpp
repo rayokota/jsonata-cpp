@@ -423,19 +423,6 @@ JsonataTest::TestOverrides* JsonataTest::getTestOverrides() {
                 to.alternateCode = alternateCodeIt->get<std::string>();
             }
 
-            // Optional depth override
-            auto depthOverrideIt = overrideObj.find("depth");
-            if (depthOverrideIt != overrideObj.end()) {
-                const auto& d = *depthOverrideIt;
-                if (d.is_number_float()) {
-                    to.overrideDepth = static_cast<int>(d.get<double>());
-                } else if (d.is_number_integer()) {
-                    to.overrideDepth = static_cast<int>(d.get<long long>());
-                } else if (d.is_number_unsigned()) {
-                    to.overrideDepth = static_cast<int>(d.get<unsigned long long>());
-                }
-            }
-
             auto reasonIt = overrideObj.find("reason");
             if (reasonIt != overrideObj.end() && reasonIt->is_string()) {
                 to.reason = reasonIt->get<std::string>();
@@ -613,9 +600,6 @@ bool JsonataTest::runTestCase(const std::string& name, const std::map<std::strin
             }
             if (to->alternateCode) {
                 code = *to->alternateCode;
-            }
-            if (to->overrideDepth) {
-                depth = *to->overrideDepth;
             }
         }
 

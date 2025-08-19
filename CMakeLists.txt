@@ -272,7 +272,7 @@ set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 
 # Create a source tar.gz suitable for GitHub Releases and FetchContent_Declare
 set(CPACK_SOURCE_GENERATOR "TGZ;ZIP")
-set(CPACK_SOURCE_PACKAGE_FILE_NAME "v${PROJECT_VERSION}")
+set(CPACK_SOURCE_PACKAGE_FILE_NAME "${PROJECT_NAME}-${PROJECT_VERSION}")
 set(CPACK_SOURCE_TOPLEVEL_TAG OFF)
 
 # Ignore typical build and VCS artifacts in the source package

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(jsonata
-    VERSION 1.0.0 
+    VERSION 0.1.0 
     DESCRIPTION "JSONata for C++"
     LANGUAGES CXX
 )
@@ -260,3 +260,49 @@ if(JSONATA_BUILD_TESTS)
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     )
 endif()
+
+# ----------------------------------------------------------------------------
+# Source packaging (CPack)
+# ----------------------------------------------------------------------------
+
+# Basic package metadata
+set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+
+# Create a source tar.gz suitable for GitHub Releases and FetchContent_Declare
+set(CPACK_SOURCE_GENERATOR "TGZ;ZIP")
+set(CPACK_SOURCE_PACKAGE_FILE_NAME "v${PROJECT_VERSION}")
+set(CPACK_SOURCE_TOPLEVEL_TAG OFF)
+
+# Ignore typical build and VCS artifacts in the source package
+set(CPACK_SOURCE_IGNORE_FILES
+    # VCS / tooling
+    "/\\.git/"
+    "/\\.github/"
+    "/\\.idea/"
+    "/\\.vscode/"
+    "\\.DS_Store$"
+    "~$"
+    "\\.swp$"
+    "\\.swo$"
+    "\\.tmp$"
+
+    # CMake/build outputs
+    "/_CPack_Packages/"
+    "/\\.cache/"
+    "/build/"
+    "/build-.*?/"
+    "/CMakeFiles/"
+    "/CMakeFiles$"
+    "/CMakeCache\\.txt$"
+    "/cmake_install\\.cmake$"
+    "/Makefile$"
+    "/Testing/"
+    "/install_manifest\\.txt$"
+
+    # Generated tests
+    "/test/gen/"
+)
+
+include(CPack)

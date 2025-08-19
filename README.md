@@ -42,7 +42,7 @@ A very simple start:
 #include <nlohmann/json.hpp>
 
 int main() {
-    // Create the data equivalent to Python
+    // Create the JSON data
     auto data = nlohmann::ordered_json::parse(R"({
         "example": [
             {"value": 4}, 

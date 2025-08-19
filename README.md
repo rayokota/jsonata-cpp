@@ -3,6 +3,7 @@
 [![Build Status][github-actions-shield]][github-actions-link]
 
 [github-actions-shield]: https://github.com/rayokota/jsonata-cpp/actions/workflows/cmake-multi-platform.yml/badge.svg?branch=master
+[github-actions-link]: https://github.com/rayokota/jsonata-cpp/actions
 
 C++ implementation of JSONata.
 

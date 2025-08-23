@@ -77,5 +77,5 @@ To build and run the unit tests:
 ```
 cmake -DJSONATA_BUILD_TESTS=ON -S . -B build
 cmake --build build
-cd build && ctest
+ctest --test-dir build
 ```

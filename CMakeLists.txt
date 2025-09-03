@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.16)
 
 project(jsonata
     VERSION 0.1.1
@@ -99,7 +99,6 @@ if(JSONATA_BUILD_TESTS)
     FetchContent_Declare(
             googletest
             URL                    https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip
-            DOWNLOAD_EXTRACT_TIMESTAMP true
     )
     FetchContent_MakeAvailable(googletest)
 

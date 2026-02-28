@@ -23,7 +23,7 @@ include(FetchContent)
 
 FetchContent_Declare(
     jsonata
-    URL https://github.com/rayokota/jsonata-cpp/archive/refs/tags/v0.1.0.zip
+    URL https://github.com/rayokota/jsonata-cpp/archive/refs/tags/v0.1.1.zip
     URL_HASH SHA256=3ee1798f28a29d36ebbb273853979926716a384e4d491a6bd408e1f6de51760d  # Optional
 )
 FetchContent_MakeAvailable(jsonata)

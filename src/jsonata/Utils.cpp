@@ -182,8 +182,6 @@ std::optional<std::string> Utils::type(const std::any& value) {
         return "null";
     } else if (isNumber(value)) {
         return "number";
-    } else if (isNullValue(value)) {
-        return "null";
     } else if (isString(value)) {
         return "string";
     } else if (isBoolean(value)) {
@@ -204,7 +202,7 @@ bool Utils::isArrayOfStrings(const std::any& v) {
 
     // Check for JList first
     if (v.type() == typeid(Utils::JList)) {
-        auto vec = arrayify(v);
+        const auto& vec = std::any_cast<const JList&>(v);
         for (const auto& item : vec) {
             if (!item.has_value() || item.type() != typeid(std::string)) {
                 return false;
@@ -216,7 +214,7 @@ bool Utils::isArrayOfStrings(const std::any& v) {
     // Also check for std::vector<std::any> for backward compatibility (tests,
     // JSON parsing)
     if (v.type() == typeid(std::vector<std::any>)) {
-        auto vec = std::any_cast<std::vector<std::any>>(v);
+        const auto& vec = std::any_cast<const std::vector<std::any>&>(v);
         for (const auto& item : vec) {
             if (!item.has_value() || item.type() != typeid(std::string)) {
                 return false;
@@ -233,7 +231,7 @@ bool Utils::isArrayOfNumbers(const std::any& v) {
 
     // Check for JList first
     if (v.type() == typeid(Utils::JList)) {
-        auto vec = arrayify(v);
+        const auto& vec = std::any_cast<const JList&>(v);
         for (const auto& item : vec) {
             if (!isNumeric(item)) {
                 return false;
@@ -245,7 +243,7 @@ bool Utils::isArrayOfNumbers(const std::any& v) {
     // Also check for std::vector<std::any> for backward compatibility (tests,
     // JSON parsing)
     if (v.type() == typeid(std::vector<std::any>)) {
-        auto vec = std::any_cast<std::vector<std::any>>(v);
+        const auto& vec = std::any_cast<const std::vector<std::any>&>(v);
         for (const auto& item : vec) {
             if (!isNumeric(item)) {
                 return false;
@@ -312,12 +310,10 @@ Utils::JList Utils::createSequence(const std::any& el) {
 }
 
 bool Utils::isSequence(const std::any& result) {
-    try {
-        auto jlist = std::any_cast<JList>(result);
-        return jlist.sequence;
-    } catch (const std::bad_any_cast&) {
+    if (!result.has_value() || result.type() != typeid(JList)) {
         return false;
     }
+    return std::any_cast<const JList&>(result).sequence;
 }
 
 std::any Utils::convertNumber(const std::any& n) {
@@ -353,7 +349,7 @@ Utils::JList Utils::arrayify(const std::any& value) {
 
     // If it's a JList, handle both range and regular cases
     if (value.type() == typeid(JList)) {
-        const auto& jlist = std::any_cast<JList>(value);
+        const auto& jlist = std::any_cast<const JList&>(value);
 
         if (jlist.isRange()) {
             // Materialize the range into a regular JList
@@ -363,7 +359,7 @@ Utils::JList Utils::arrayify(const std::any& value) {
             }
             return result;
         } else {
-            // For regular JList, return as-is
+            // For regular JList, return a copy
             return jlist;
         }
     }
@@ -371,7 +367,7 @@ Utils::JList Utils::arrayify(const std::any& value) {
     // If it's a std::vector<std::any>, convert to JList for backward
     // compatibility
     if (value.type() == typeid(std::vector<std::any>)) {
-        const auto& vec = std::any_cast<std::vector<std::any>>(value);
+        const auto& vec = std::any_cast<const std::vector<std::any>&>(value);
         JList result(vec);
         return result;
     }

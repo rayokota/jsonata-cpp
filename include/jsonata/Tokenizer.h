@@ -30,6 +30,7 @@
 #include <regex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace jsonata {
 
@@ -57,6 +58,8 @@ class Tokenizer {
 
     // Instance variables
     std::string path_;
+    std::vector<int32_t> codepoints_;  // Pre-computed codepoints for O(1) access
+    std::vector<size_t> byte_offsets_;  // Byte offset of each codepoint in path_
     size_t position_;
     size_t length_;
     int64_t depth_;

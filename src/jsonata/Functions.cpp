@@ -2685,14 +2685,6 @@ bool Functions::contains(const std::string& str, const std::any& token) {
         }
         // Check if it's a regex object (stored as map with "type" = "regex")
         else {
-            try {
-                auto regex = std::any_cast<std::regex>(token);
-                auto matches = evaluateMatcher(regex, str);
-                return !matches.empty();
-            } catch (const std::bad_any_cast&) {
-                // Not a regex object, fall through
-            }
-
             // Java line 703: else throw new Error("unknown type to match:
             // "+token); For C++, fall back to string conversion as fallback
             auto tokenStr = string(token);

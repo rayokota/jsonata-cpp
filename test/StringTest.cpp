@@ -183,6 +183,52 @@ TEST_F(StringTest, regexTest) {
     EXPECT_EQ(result, expected);
 }
 
+TEST_F(StringTest, fieldnameWithSpecialCharTest) {
+    Jsonata expr("$ ~> |$|{}|");
+    nlohmann::ordered_json input;
+    input["a\nb"] = "c\nd";
+    auto result = expr.evaluate(input);
+    EXPECT_EQ(result, input);
+}
+
+TEST_F(StringTest, regexLiteralTest) {
+    // Verify regex at end of expression doesn't crash (issue #88)
+    EXPECT_NO_THROW({
+        Jsonata expr("/^test.*$/");
+        expr.evaluate(nullptr);
+    });
+}
+
+TEST_F(StringTest, evalRegexTest) {
+    // Verify $eval of regex at end of expression doesn't crash (issue #88)
+    EXPECT_NO_THROW({
+        Jsonata expr("$eval('/^test.*$/')");
+        expr.evaluate(nullptr);
+    });
+}
+
+TEST_F(StringTest, evalRegexCheckAnswerDataTest) {
+    Jsonata expr("(\n    $matcher := $eval('/l/');\n    ('Hello World' ~> $matcher);\n)");
+    auto result = expr.evaluate(nullptr);
+    ASSERT_TRUE(result.is_object());
+    EXPECT_EQ(result["match"].get<std::string>(), "l");
+    EXPECT_EQ(result["start"].get<long long>(), 2);
+    EXPECT_EQ(result["end"].get<long long>(), 3);
+    ASSERT_TRUE(result["groups"].is_array());
+    EXPECT_EQ(result["groups"][0].get<std::string>(), "l");
+}
+
+TEST_F(StringTest, evalRegexCallNextTest) {
+    Jsonata expr("(\n    $matcher := $eval('/l/');\n    ('Hello World' ~> $matcher).next();\n)");
+    auto result = expr.evaluate(nullptr);
+    ASSERT_TRUE(result.is_object());
+    EXPECT_EQ(result["match"].get<std::string>(), "l");
+    EXPECT_EQ(result["start"].get<long long>(), 3);
+    EXPECT_EQ(result["end"].get<long long>(), 4);
+    ASSERT_TRUE(result["groups"].is_array());
+    EXPECT_EQ(result["groups"][0].get<std::string>(), "l");
+}
+
 TEST_F(StringTest, DISABLED_replaceTest) {
     auto input = nlohmann::ordered_json("http://example.org/test{par}");
     auto result = Jsonata("$replace($, /{par}/, '')").evaluate(input);

@@ -18,5 +18,6 @@ _deps
 srclient-test
 
 # IDE specific files (e.g., CLion, VS Code)
+.claude
 .idea
 .vscode

@@ -775,18 +775,6 @@ std::any Jsonata::evaluateWildcard(std::shared_ptr<Parser::Symbol> expr,
                     auto flattenedVec = Utils::arrayify(flattened);
                     Utils::JList appendArgs = {results, flattenedVec};
                     results = Utils::arrayify(Functions::append(appendArgs));
-                } else if (value.has_value() &&
-                           value.type() ==
-                               typeid(nlohmann::ordered_map<std::string,
-                                                            std::any>)) {
-                    // Recursively call evaluateWildcard on map objects
-                    auto recursiveResult = evaluateWildcard(expr, value);
-                    if (recursiveResult.has_value() &&
-                        Utils::isArray(recursiveResult)) {
-                        auto recursiveVec = Utils::arrayify(recursiveResult);
-                        results.insert(results.end(), recursiveVec.begin(),
-                                       recursiveVec.end());
-                    }
                 } else {
                     results.push_back(value);
                 }
@@ -2658,6 +2646,32 @@ std::any Jsonata::apply(const std::any& proc, const Utils::JList& args,
     return result;
 }
 
+struct RegexState {
+    std::shared_ptr<std::string> str;
+    std::shared_ptr<std::regex> regex;
+    std::sregex_iterator it;
+    std::sregex_iterator end;
+};
+
+static std::any regexClosure(std::shared_ptr<RegexState> state) {
+    if (state->it == state->end) return std::any{};
+    auto match = *state->it;
+    ++(state->it);
+    nlohmann::ordered_map<std::string, std::any> result;
+    result["match"] = std::string(match.str());
+    result["start"] = static_cast<long long>(match.position());
+    result["end"] = static_cast<long long>(match.position() + match.length());
+    Utils::JList groups;
+    groups.push_back(std::string(match.str()));
+    result["groups"] = std::any(groups);
+    JFunction nextFn;
+    nextFn.implementation = [state](const Utils::JList&, const std::any&, std::shared_ptr<Frame>) -> std::any {
+        return regexClosure(state);
+    };
+    result["next"] = std::any(nextFn);
+    return std::any(result);
+}
+
 std::any Jsonata::applyInner(const std::any& proc, const Utils::JList& args,
                              const std::any& input,
                              std::shared_ptr<Frame> environment) {
@@ -2686,18 +2700,19 @@ std::any Jsonata::applyInner(const std::any& proc, const Utils::JList& args,
             auto regex = std::any_cast<std::regex>(proc);
             Utils::JList results;
 
-            // Java: for (String s : (List<String>)validatedArgs)
             for (const auto& arg : validatedArgs) {
                 if (arg.has_value() && arg.type() == typeid(std::string)) {
-                    auto str = std::any_cast<std::string>(arg);
-                    // Java: if (((Pattern)proc).matcher(s).find())
-                    if (std::regex_search(str, regex)) {
-                        // Java: _res.add(s);
-                        results.push_back(str);
-                    }
+                    auto state = std::make_shared<RegexState>();
+                    state->str = std::make_shared<std::string>(std::any_cast<std::string>(arg));
+                    state->regex = std::make_shared<std::regex>(regex);
+                    state->it = std::sregex_iterator(state->str->begin(), state->str->end(), *state->regex);
+                    state->end = std::sregex_iterator();
+                    results.push_back(regexClosure(state));
                 }
             }
-            // Java: result = _res;
+            if (results.size() == 1) {
+                return results[0];
+            }
             return results;
         }
 
@@ -3397,9 +3412,6 @@ std::any Jsonata::evaluateTupleStep(
         // Java line 435: create initial tuple bindings (only when tupleBindings
         // is null, not just empty)
         for (const auto& item : input) {
-            if (!item.has_value()) {
-                continue;
-            }
             nlohmann::ordered_map<std::string, std::any> tuple;
             tuple["@"] = item;
             bindings.push_back(std::any(tuple));

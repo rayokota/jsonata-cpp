@@ -289,21 +289,7 @@ Utils::JList Utils::createSequence(const std::any& el) {
     }
 
     if (!isNoneSentinel) {
-        if (el.type() == typeid(Utils::JList)) {
-            auto vec = arrayify(el);
-            // If single element list, add that element; otherwise add the list
-            // itself
-            if (vec.size() == 1) {
-                sequence.push_back(vec[0]);
-            } else {
-                sequence.push_back(el);
-            }
-        } else {
-            // Add the element directly, even if it is an explicit JSON null or
-            // an undefined/empty value. This matches Java's
-            // Utils.createSequence which adds null as an element (el != NONE).
-            sequence.push_back(el);
-        }
+        sequence.push_back(el);
     }
 
     return sequence;

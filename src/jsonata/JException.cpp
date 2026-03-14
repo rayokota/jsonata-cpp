@@ -355,6 +355,14 @@ std::string JException::generateMessage(const std::string& error, int64_t locati
     }
 
     std::string formatted = message;
+
+    if (formatted == "{{{message}}}") {
+        if (arg1.has_value() && arg1.type() == typeid(std::string)) {
+            return std::any_cast<std::string>(arg1);
+        }
+        return formatted;
+    }
+
     try {
         // Replace any {{var}} with the actual argument values
         std::regex pattern1(R"(\{\{\w+\}\})");

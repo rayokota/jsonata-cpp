@@ -2432,7 +2432,8 @@ void Functions::stringifyInternal(std::ostringstream& os, const std::any& arg,
             size_t count = 0;
             for (const auto& [key, value] : map) {
                 if (prettify) os << indent << "  ";
-                os << '"' << key << '"' << ':';
+                quoteString(os, key);
+                os << ':';
                 if (prettify) os << " ";
 
                 // Handle special function values with quotes per Java logic
@@ -4133,7 +4134,7 @@ void Functions::error(const std::string& message) {
 
 void Functions::assertFn(bool condition, const std::string& message) {
     if (!condition) {
-        error(message);
+        throw JException("D3141", -1, !message.empty() ? message : std::string("$assert() statement failed"));
     }
 }
 

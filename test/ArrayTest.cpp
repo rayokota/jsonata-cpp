@@ -16,6 +16,17 @@ protected:
     }
 };
 
+TEST_F(ArrayTest, testNegativeIndex) {
+    Jsonata expr1("item[-1]");
+    auto input1 = nlohmann::ordered_json::parse(R"({"item": []})");
+    auto result1 = expr1.evaluate(input1);
+    EXPECT_TRUE(result1.is_null());
+
+    Jsonata expr2("$[-1]");
+    auto result2 = expr2.evaluate(nlohmann::ordered_json::array());
+    EXPECT_TRUE(result2.is_null());
+}
+
 TEST_F(ArrayTest, testArray) {
     // Create test data equivalent to Java: Map.of("key", Arrays.asList(Map.of("x", "y"), Map.of("a", "b")))
     auto data = nlohmann::ordered_json::parse(R"({"key": [{"x": "y"}, {"a": "b"}]})");
@@ -36,11 +47,55 @@ TEST_F(ArrayTest, DISABLED_filterTest) {
     // Frame value not evaluated if used in array filter #45
     // This test is disabled as in the Java version
     Jsonata expr("($arr := [{'x':1}, {'x':2}];$arr[x=$number(variable.field)])");
-    
+
     auto inputData = nlohmann::ordered_json::parse(R"({"variable": {"field": "1"}})");
-    
+
     auto result = expr.evaluate(inputData);
     EXPECT_TRUE(result != nullptr);
+}
+
+TEST_F(ArrayTest, testIndex) {
+    Jsonata expr("($x:=['a','b']; $x#$i.$i)");
+    auto result1 = expr.evaluate(nlohmann::ordered_json(1));
+    auto expected = nlohmann::ordered_json::parse("[0, 1]");
+    EXPECT_EQ(result1.dump(), expected.dump());
+
+    auto result2 = expr.evaluate(nlohmann::ordered_json(nullptr));
+    EXPECT_EQ(result2.dump(), expected.dump());
+}
+
+TEST_F(ArrayTest, testWildcard) {
+    Jsonata expr("*");
+    auto input = nlohmann::ordered_json::parse(R"([{"x": 1}])");
+    auto result = expr.evaluate(input);
+    auto expected = nlohmann::ordered_json::parse(R"({"x": 1})");
+    EXPECT_EQ(result.dump(), expected.dump());
+}
+
+TEST_F(ArrayTest, testWildcardFilter) {
+    auto data = nlohmann::ordered_json::parse(
+        R"([{"value": {"Name": "Cell1", "Product": "Product1"}}, {"value": {"Name": "Cell2", "Product": "Product2"}}])");
+
+    Jsonata expression("*[value.Product = 'Product1']");
+    auto result1 = expression.evaluate(data);
+    auto expected = nlohmann::ordered_json::parse(
+        R"({"value": {"Name": "Cell1", "Product": "Product1"}})");
+    EXPECT_EQ(result1.dump(), expected.dump());
+
+    Jsonata expression2("**[value.Product = 'Product1']");
+    auto result2 = expression2.evaluate(data);
+    EXPECT_EQ(result2.dump(), expected.dump());
+}
+
+TEST_F(ArrayTest, testAssertCustomMessage) {
+    Jsonata expr("$assert(false, 'custom error')");
+    try {
+        expr.evaluate(nullptr);
+        FAIL() << "Expected JException";
+    } catch (const JException& e) {
+        std::string msg = e.what();
+        EXPECT_TRUE(msg.find("custom error") != std::string::npos) << "Expected 'custom error' in: " << msg;
+    }
 }
 
 } // namespace jsonata

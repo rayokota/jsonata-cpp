@@ -3385,9 +3385,6 @@ std::any Jsonata::evaluateTupleStep(
         // Java line 435: create initial tuple bindings (only when tupleBindings
         // is null, not just empty)
         for (const auto& item : input) {
-            if (!item.has_value()) {
-                continue;
-            }
             nlohmann::ordered_map<std::string, std::any> tuple;
             tuple["@"] = item;
             bindings.push_back(std::any(tuple));

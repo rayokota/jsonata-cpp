@@ -43,6 +43,16 @@ TEST_F(ArrayTest, DISABLED_filterTest) {
     EXPECT_TRUE(result != nullptr);
 }
 
+TEST_F(ArrayTest, testIndex) {
+    Jsonata expr("($x:=['a','b']; $x#$i.$i)");
+    auto result1 = expr.evaluate(nlohmann::ordered_json(1));
+    auto expected = nlohmann::ordered_json::parse("[0, 1]");
+    EXPECT_EQ(result1.dump(), expected.dump());
+
+    auto result2 = expr.evaluate(nlohmann::ordered_json(nullptr));
+    EXPECT_EQ(result2.dump(), expected.dump());
+}
+
 TEST_F(ArrayTest, testWildcard) {
     Jsonata expr("*");
     auto input = nlohmann::ordered_json::parse(R"([{"x": 1}])");

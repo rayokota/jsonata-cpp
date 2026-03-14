@@ -4134,7 +4134,7 @@ void Functions::error(const std::string& message) {
 
 void Functions::assertFn(bool condition, const std::string& message) {
     if (!condition) {
-        error(message);
+        throw JException("D3141", -1, !message.empty() ? message : std::string("$assert() statement failed"));
     }
 }
 

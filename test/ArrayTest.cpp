@@ -87,4 +87,15 @@ TEST_F(ArrayTest, testWildcardFilter) {
     EXPECT_EQ(result2.dump(), expected.dump());
 }
 
+TEST_F(ArrayTest, testAssertCustomMessage) {
+    Jsonata expr("$assert(false, 'custom error')");
+    try {
+        expr.evaluate(nullptr);
+        FAIL() << "Expected JException";
+    } catch (const JException& e) {
+        std::string msg = e.what();
+        EXPECT_TRUE(msg.find("custom error") != std::string::npos) << "Expected 'custom error' in: " << msg;
+    }
+}
+
 } // namespace jsonata

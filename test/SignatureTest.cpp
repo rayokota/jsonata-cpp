@@ -93,4 +93,55 @@ TEST_F(SignatureTest, testVarArg) {
     EXPECT_EQ(result.get<long long>(), 6);
 }
 
+TEST_F(SignatureTest, testVarArgMany) {
+    Jsonata expr("$customArgs('test',[1,2,3,4],3)");
+
+    JFunction customArgsFn;
+    customArgsFn.signature = std::make_shared<utils::Signature>("<sa<n>n:s>", "customArgs");
+    customArgsFn.implementation = [](const Utils::JList& args, const std::any&, std::shared_ptr<Frame>) -> std::any {
+        std::string out = "[";
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (i > 0) out += ", ";
+            const auto& a = args[i];
+            if (!a.has_value()) {
+                out += "null";
+            } else if (a.type() == typeid(std::string)) {
+                out += std::any_cast<std::string>(a);
+            } else if (a.type() == typeid(double)) {
+                auto v = std::any_cast<double>(a);
+                if (v == static_cast<long long>(v))
+                    out += std::to_string(static_cast<long long>(v));
+                else
+                    out += std::to_string(v);
+            } else if (a.type() == typeid(long long)) {
+                out += std::to_string(std::any_cast<long long>(a));
+            } else if (a.type() == typeid(Utils::JList)) {
+                const auto& arr = std::any_cast<Utils::JList>(a);
+                out += "[";
+                for (size_t j = 0; j < arr.size(); ++j) {
+                    if (j > 0) out += ", ";
+                    const auto& el = arr[j];
+                    if (el.type() == typeid(double)) {
+                        auto v = std::any_cast<double>(el);
+                        if (v == static_cast<long long>(v))
+                            out += std::to_string(static_cast<long long>(v));
+                        else
+                            out += std::to_string(v);
+                    } else if (el.type() == typeid(long long)) {
+                        out += std::to_string(std::any_cast<long long>(el));
+                    }
+                }
+                out += "]";
+            }
+        }
+        out += "]";
+        return out;
+    };
+    expr.registerFunction("customArgs", customArgsFn);
+
+    auto result = expr.evaluate(nullptr);
+    ASSERT_TRUE(result.is_string());
+    EXPECT_EQ(result.get<std::string>(), "[test, [1, 2, 3, 4], 3]");
+}
+
 } // namespace jsonata

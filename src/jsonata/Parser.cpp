@@ -1706,7 +1706,8 @@ std::shared_ptr<Parser::Symbol> Parser::processAST(
                 !rest->procedure->steps.empty() &&
                 rest->procedure->steps[0]->type == "name" &&
                 !result->steps.empty() &&
-                result->steps.back()->type == "function") {
+                result->steps.back()->type == "function" &&
+                rest->procedure->steps[0]->value.type() == typeid(std::shared_ptr<Symbol>)) {
                 // Next function in chain of functions - will override a
                 // thenable
                 result->steps.back()->nextFunction = rest->procedure->steps[0];

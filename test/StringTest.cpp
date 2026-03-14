@@ -191,6 +191,22 @@ TEST_F(StringTest, fieldnameWithSpecialCharTest) {
     EXPECT_EQ(result, input);
 }
 
+TEST_F(StringTest, regexLiteralTest) {
+    // Verify regex at end of expression doesn't crash (issue #88)
+    EXPECT_NO_THROW({
+        Jsonata expr("/^test.*$/");
+        expr.evaluate(nullptr);
+    });
+}
+
+TEST_F(StringTest, evalRegexTest) {
+    // Verify $eval of regex at end of expression doesn't crash (issue #88)
+    EXPECT_NO_THROW({
+        Jsonata expr("$eval('/^test.*$/')");
+        expr.evaluate(nullptr);
+    });
+}
+
 TEST_F(StringTest, DISABLED_replaceTest) {
     auto input = nlohmann::ordered_json("http://example.org/test{par}");
     auto result = Jsonata("$replace($, /{par}/, '')").evaluate(input);

@@ -182,8 +182,6 @@ std::optional<std::string> Utils::type(const std::any& value) {
         return "null";
     } else if (isNumber(value)) {
         return "number";
-    } else if (isNullValue(value)) {
-        return "null";
     } else if (isString(value)) {
         return "string";
     } else if (isBoolean(value)) {

@@ -55,8 +55,15 @@ std::unordered_map<std::string, std::string> Tokenizer::createEscapes() {
 
 Tokenizer::Tokenizer(const std::string& path)
     : path_(path), position_(0), depth_(0) {
-    // Calculate length in codepoints using utfcpp
-    length_ = utf8::unchecked::distance(path_.begin(), path_.end());
+    // Pre-compute codepoints and byte offsets for O(1) charAt access
+    auto it = path_.begin();
+    while (it != path_.end()) {
+        byte_offsets_.push_back(static_cast<size_t>(it - path_.begin()));
+        codepoints_.push_back(static_cast<int32_t>(utf8::unchecked::next(it)));
+    }
+    // Store sentinel byte offset for end-of-string
+    byte_offsets_.push_back(static_cast<size_t>(it - path_.begin()));
+    length_ = codepoints_.size();
 }
 
 std::unique_ptr<Tokenizer::Token> Tokenizer::create(const std::string& type,
@@ -69,11 +76,7 @@ int32_t Tokenizer::charAt(size_t index) const {
     if (index >= length_) {
         return 0;  // Match Java behavior: out of bounds returns 0/null char
     }
-
-    // Use utfcpp to advance to the correct codepoint
-    auto it = path_.begin();
-    utf8::unchecked::advance(it, index);
-    return static_cast<int32_t>(utf8::unchecked::next(it));
+    return codepoints_[index];
 }
 
 // Helper method to extract substring by codepoint indices (like Java substring)
@@ -88,14 +91,8 @@ std::string Tokenizer::substring(size_t start, size_t end) const {
         return "";
     }
 
-    // Use utfcpp to find byte positions for the codepoint range
-    auto startIt = path_.begin();
-    utf8::unchecked::advance(startIt, start);
-
-    auto endIt = startIt;
-    utf8::unchecked::advance(endIt, end - start);
-
-    return std::string(startIt, endIt);
+    // Use pre-computed byte offsets for O(1) lookup
+    return path_.substr(byte_offsets_[start], byte_offsets_[end] - byte_offsets_[start]);
 }
 
 bool Tokenizer::isClosingSlash(size_t position) const {
@@ -371,23 +368,21 @@ std::unique_ptr<Tokenizer::Token> Tokenizer::next(bool prefix) {
         throw JException("S0101", static_cast<int64_t>(position_));
     }
 
-    // Test for numbers using codepoint-based substring (matches Java logic)
+    // Test for numbers using byte-level regex on remaining input (matches Java logic)
     {
         static const std::regex numregex(
             "^-?(0|([1-9][0-9]*))(\\.[0-9]+)?([Ee][-+]?[0-9]+)?");
-        std::string remaining = substring(position_, length_);
-        std::smatch match;
-        if (std::regex_search(remaining, match, numregex) &&
+        // Use byte offsets to get iterators into the original string without copying
+        auto byteStart = path_.cbegin() + static_cast<std::string::difference_type>(byte_offsets_[position_]);
+        auto byteEnd = path_.cend();
+        std::cmatch match;
+        if (std::regex_search(&*byteStart, &*byteEnd, match, numregex) &&
             match.position() == 0) {
             std::string numStr = match.str(0);
             double num = std::stod(numStr);
             if (!std::isnan(num) && std::isfinite(num)) {
-                // Convert byte length to codepoint length for position
-                // advancement
-                size_t byteLen = numStr.length();
-                size_t codepointLen =
-                    utf8::unchecked::distance(numStr.begin(), numStr.end());
-                position_ += codepointLen;
+                // Number literals are ASCII, so byte length == codepoint length
+                position_ += numStr.length();
                 return create("number", Utils::convertNumber(num));
             }
             throw JException("S0102", static_cast<int64_t>(position_));

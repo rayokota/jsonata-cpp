@@ -16,6 +16,17 @@ protected:
     }
 };
 
+TEST_F(ArrayTest, testNegativeIndex) {
+    Jsonata expr1("item[-1]");
+    auto input1 = nlohmann::ordered_json::parse(R"({"item": []})");
+    auto result1 = expr1.evaluate(input1);
+    EXPECT_TRUE(result1.is_null());
+
+    Jsonata expr2("$[-1]");
+    auto result2 = expr2.evaluate(nlohmann::ordered_json::array());
+    EXPECT_TRUE(result2.is_null());
+}
+
 TEST_F(ArrayTest, testArray) {
     // Create test data equivalent to Java: Map.of("key", Arrays.asList(Map.of("x", "y"), Map.of("a", "b")))
     auto data = nlohmann::ordered_json::parse(R"({"key": [{"x": "y"}, {"a": "b"}]})");

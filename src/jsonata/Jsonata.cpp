@@ -775,18 +775,6 @@ std::any Jsonata::evaluateWildcard(std::shared_ptr<Parser::Symbol> expr,
                     auto flattenedVec = Utils::arrayify(flattened);
                     Utils::JList appendArgs = {results, flattenedVec};
                     results = Utils::arrayify(Functions::append(appendArgs));
-                } else if (value.has_value() &&
-                           value.type() ==
-                               typeid(nlohmann::ordered_map<std::string,
-                                                            std::any>)) {
-                    // Recursively call evaluateWildcard on map objects
-                    auto recursiveResult = evaluateWildcard(expr, value);
-                    if (recursiveResult.has_value() &&
-                        Utils::isArray(recursiveResult)) {
-                        auto recursiveVec = Utils::arrayify(recursiveResult);
-                        results.insert(results.end(), recursiveVec.begin(),
-                                       recursiveVec.end());
-                    }
                 } else {
                     results.push_back(value);
                 }

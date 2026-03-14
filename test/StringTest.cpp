@@ -183,6 +183,14 @@ TEST_F(StringTest, regexTest) {
     EXPECT_EQ(result, expected);
 }
 
+TEST_F(StringTest, fieldnameWithSpecialCharTest) {
+    Jsonata expr("$ ~> |$|{}|");
+    nlohmann::ordered_json input;
+    input["a\nb"] = "c\nd";
+    auto result = expr.evaluate(input);
+    EXPECT_EQ(result, input);
+}
+
 TEST_F(StringTest, DISABLED_replaceTest) {
     auto input = nlohmann::ordered_json("http://example.org/test{par}");
     auto result = Jsonata("$replace($, /{par}/, '')").evaluate(input);

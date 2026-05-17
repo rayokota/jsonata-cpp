@@ -228,6 +228,9 @@ std::any Jsonata::_evaluate(std::shared_ptr<Parser::Symbol> expr,
         result = std::any{};
     }
 
+    std::cout << "RRRRRRRRRRR" << Jsonata::fromAny<QVariant>(result).dump() << std::endl;
+
+
     // Apply predicates if present - matches Java lines 210-213
     if (!expr->predicate.empty()) {
         for (const auto& pred : expr->predicate) {
@@ -603,7 +606,9 @@ std::any Jsonata::evaluateFunctionWithContext(
 
     // Then add the regular arguments
     for (const auto& arg : expr->arguments) {
+        // std::cout << "XXXXXXXXXXXXX" << Jsonata::fromAny<QVariant>(arg).dump() << std::endl;
         auto argValue = evaluate(arg, input, environment);
+        // std::cout << "VVVVVVVVVVVVVVV" << Jsonata::fromAny<QVariant>(arg).dump() << std::endl;
         evaluatedArgs.push_back(argValue);
     }
 
@@ -2497,6 +2502,8 @@ std::any Jsonata::evaluate(const std::any anyInput,
         // Clear TLS after evaluation to avoid dangling references
         tls_input_.reset();
         tls_environment_.reset();
+        std::cout << "RRR1" << Jsonata::fromAny<QVariant>(result).dump() << std::endl;
+        std::cout << "RRR2" << Jsonata::fromAny<QVariant>(Utils::convertNulls(result)).dump() << std::endl;
         return Utils::convertNulls(result);
     } catch (const std::exception& err) {
         // TODO: populateMessage(err);

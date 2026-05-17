@@ -36,7 +36,7 @@ struct json_bridge_impl<T,void>
             if constexpr (std::is_same_v<V, std::nullptr_t>) {
                 return BaseT();
             } else if constexpr (std::is_constructible_v<T, V>) {
-                return BaseT(value);
+                return value;
             } else {
                 static_assert(false, "Unsupported type for nlohmann creation");
             }
@@ -162,7 +162,14 @@ struct json_bridge_impl<T,void>
             auto convertor = [&](auto E, auto &Prop) {
                 using EType = std::decay_t<decltype(E)>; // This is the type of E
 
-                if constexpr (std::is_base_of_v<std::string, propertyType>) {
+                if constexpr ( isTaggedProperty_v<propertyType> ) {
+                    // special conversion -> Array
+                    if (E.is_array()) {
+                        propertyValue.value = E;
+                        return true;
+                    }
+                    return false;
+                } else if constexpr (std::is_base_of_v<std::string, propertyType>) {
                     // property must be string
                     if (E.is_string()) {
                         Prop = E.template get<std::string>();
@@ -188,21 +195,21 @@ struct json_bridge_impl<T,void>
             return (overrideIt != root.end()) ? convertor((*overrideIt), propertyValue) : false;
         }
 
-        static bool getPropertyValueOfType(const BaseT &root,
-                                           const std::string &propertyName,
-                                           TaggedProperty<T,AsArray> propertyValue)
-        {
-            auto convertor = [&](auto E, TaggedProperty<T,AsArray> Prop) {
-                using EType = std::decay_t<decltype(E)>; // This is the type of E
-                if (E.is_array()) {
-                    Prop.value = E;
-                    return true;
-                }
-                return false;
-            };
+        // static bool getPropertyValueOfType(const BaseT &root,
+        //                                    const std::string &propertyName,
+        //                                    TaggedProperty<T,AsArray> propertyValue)
+        // {
+        //     auto convertor = [&](auto E, TaggedProperty<T,AsArray> Prop) {
+        //         using EType = std::decay_t<decltype(E)>; // This is the type of E
+        //         if (E.is_array()) {
+        //             Prop.value = E;
+        //             return true;
+        //         }
+        //         return false;
+        //     };
 
-            auto overrideIt = root.find(propertyName);
-            return (overrideIt != root.end()) ? convertor((*overrideIt), propertyValue) : false;;
-        }
+        //     auto overrideIt = root.find(propertyName);
+        //     return (overrideIt != root.end()) ? convertor((*overrideIt), propertyValue) : false;;
+        // }
 };
 }

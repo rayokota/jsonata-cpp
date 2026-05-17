@@ -145,6 +145,15 @@ namespace jsonata
     template<typename T>
     struct backend;
 
+    template <typename T>
+    struct isBackend : std::false_type {};
+
+    template <typename T>
+    struct isBackend<backend<T>> : std::true_type {};
+
+    template <typename T>
+    inline constexpr bool isBackend_v = isBackend<T>::value;
+
     // test to see of type T is of the form backend<X>
     template<typename T>
     struct extractBackendType
@@ -217,8 +226,19 @@ namespace jsonata
                 val.emplace(json_bridge<BaseT>::create(std::forward<U>(value)));
             }
 
-            operator T &() { return *val; }
-            operator const T &() const { return *val; }
+            operator T &() {
+                if( ! val ) {
+                    val.emplace();
+                }
+                return *val;
+            }
+
+            operator const T &() const {
+                if( ! val ) {
+                    val.emplace();
+                }
+                return *val;
+            }
 
             // to unwrap explicitely
             template<typename Self>
@@ -249,7 +269,7 @@ namespace jsonata
             bool isEmpty() const
                 requires isReadCompatible<BaseT>
             {
-                return val && json_bridge<BaseT>::isEmpty(*val);
+                return ! val || json_bridge<BaseT>::isEmpty(*val);
             }
 
             bool isObject() const
@@ -412,33 +432,73 @@ namespace jsonata
             bool getPropertyValueOfType(const std::string &propertyName, PropT &&propertyValue) const
                 requires isReadCompatible<BaseT>
             {
+
+                using rawPropT = std::decay_t<PropT>;
+
                 if (!val) {
                     return false;
                 }
-                // 1. Detect if we are dealing with a TaggedProperty
-                if constexpr (isTaggedProperty_v<std::decay_t<PropT>>) {
-                    // 2. Extract the backend<T> object of the property and the Tag
-                    using Tag = typename std::decay_t<PropT>::tagType;
 
-                    // make sure if value in TaggedProperty std::optional, that it is initialized
-                    auto *dataPtr = ensureHasValue(propertyValue.value);
+                // Detect if we are dealing with a TaggedProperty (TaggedProperty is always converted to a backend(BaseT)
+                if constexpr (isTaggedProperty_v<rawPropT>) {
+                    // Extract the backend<T> object of the property and the Tag
+                    using Tag = typename rawPropT::tagType;
+                    // return type requested by the property
+                    using objType = typename std::decay_t<decltype( propertyValue.value )>;
 
-                    if (!dataPtr->val) {
-                        // allocate val
-                        dataPtr->val = std::move(json_bridge<BaseT>::create());
+                    // local copy of returned value (if any value is returned)
+                    BaseT Buffer;
+
+                    // Repackage buffer to pass tag to the bridge
+                    auto repackaged = TaggedProperty<BaseT, Tag>{Buffer};
+
+                    if( json_bridge<BaseT>::getPropertyValueOfType(*val,
+                                                                   propertyName,
+                                                                   repackaged) ) {
+                        // data returned in repackage
+                        if constexpr (isOptional_v<objType>) {
+                            propertyValue.value.emplace( wrap( std::forward<BaseT>( Buffer )) );
+                        } else {
+                            propertyValue.value.val.emplace(Buffer);
+                        }
+                        return true;
+                    } // else no value
+                    // 2. NEW SECTION: Handling backend<BaseT> or std::optional<backend<BaseT>>
+                }  else if constexpr (isBackend_v<unwrapType_t<rawPropT>>) {
+                    using objType = rawPropT;
+
+                    BaseT Buffer;
+                    // We fetch the raw BaseT (json) first
+                    if (json_bridge<BaseT>::getPropertyValueOfType(*val, propertyName, Buffer)) {
+                        if constexpr (isOptional_v<objType>) {
+                            // Construct the backend wrapper inside the optional
+                            propertyValue.emplace();
+                            // transfer the baseT
+                            propertyValue->val.emplace( std::move(Buffer) );
+                        } else {
+                            // Direct assignment (invokes backend constructor/assignment)
+                            propertyValue.val.emplace( std::move(Buffer) );
+                        }
+                        return true;
                     }
-
-                    // Repackage pointing to the T inside the backend's val pointer
-                    auto repackaged = TaggedProperty<BaseT, Tag>{*(dataPtr->val)};
-
-                    return json_bridge<BaseT>::getPropertyValueOfType(*val,
-                                                                      propertyName,
-                                                                      repackaged);
                 } else {
-                    auto *dataPtr = ensureHasValue(propertyValue);
-                    // Standard case for simple types
-                    return json_bridge<BaseT>::getPropertyValueOfType(*val, propertyName, *dataPtr);
+                    using objType = typename std::decay_t<decltype( propertyValue )>;
+                    // get base type
+                    using baseType = unwrapType_t< std::remove_cvref_t<decltype( propertyValue )> >;
+
+                    baseType Buffer;
+
+                    if( json_bridge<BaseT>::getPropertyValueOfType(*val, propertyName, Buffer) ) {
+                        // data returned in repackage
+                        if constexpr (isOptional_v<objType>) {
+                            propertyValue.emplace( std::forward<baseType>( Buffer ) );
+                        } else {
+                            propertyValue = std::move(Buffer);
+                        }
+                        return true;
+                    }
                 }
+                return false;
             }
 
             void push_back(auto value)
@@ -491,21 +551,7 @@ namespace jsonata
             }
 
         private:
-            std::optional<BaseT> val;
-
-            template<typename AT>
-            static auto *ensureHasValue(AT &obj)
-            {
-                // If it's an optional, make sure it has a value
-                if constexpr (isOptional_v<AT>) {
-                    if (!obj.has_value()) {
-                        obj.emplace(); // Construct the data  inside the optional
-                    }
-                    return &(*obj);
-                } else {
-                    return &obj; // It's already a raw backend
-                }
-            }
+            mutable std::optional<BaseT> val;
 
             // Helper to wrap the result of doAt
             static auto wrap(auto &&result)

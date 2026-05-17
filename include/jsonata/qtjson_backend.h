@@ -46,7 +46,7 @@ struct json_bridge_impl<QJsonValue,void>
             else if constexpr (std::is_floating_point_v<V>) {
                 return QJsonValue(static_cast<double>(value));
             } else if constexpr (std::is_constructible_v<QJsonValue, V>) {
-                return QJsonValue(value);
+                return value;
             } else {
                 static_assert(false, "Unsupported type for QJsonValue creation");
             }
@@ -244,67 +244,42 @@ struct json_bridge_impl<QJsonValue,void>
 
         static std::string dump(const QJsonValue &v)
         {
-            return QString::fromUtf8(QJsonValue(v).toJson()).toStdString();
+            return QString::fromUtf8(QJsonValue(v).toJson(QJsonValue::JsonFormat::Compact)).toStdString();
         }
 
         static QJsonValue parse(const std::string &s)
         {
-            auto decodeUtfChars = [](const std::string &stdStr) -> QString {
-                QString str = QString::fromStdString(stdStr);
-
-                // Regex to find \u followed by 4 hex digits
+            auto unescape = [](QString & input ) {
+                // Match \u followed by 4 hex digits
                 static QRegularExpression re("\\\\u([0-9a-fA-F]{4})");
+                QRegularExpressionMatchIterator i = re.globalMatch(input);
 
-                QRegularExpressionMatchIterator i = re.globalMatch(str);
                 int offset = 0;
-
                 while (i.hasNext()) {
                     QRegularExpressionMatch match = i.next();
-
-                    // Get the 4 hex digits (e.g., "D800")
                     bool ok;
                     ushort code = match.captured(1).toUShort(&ok, 16);
 
                     if (ok) {
-                        // Convert hex to a single UTF-16 character (even if it's a lone surrogate)
                         QString replacement = QChar(code);
-
-                        // Replace the "\uD800" text with the actual character
-                        str.replace(match.capturedStart() + offset,
-                                    match.capturedLength(),
-                                    replacement);
-
-                        // Adjust offset because we replaced 6 chars ("\uD800") with 1 char
+                        input.replace(match.capturedStart() + offset, match.capturedLength(), replacement);
+                        // Adjust offset because the string length changed
                         offset += (replacement.length() - match.capturedLength());
                     }
                 }
-                return str;
             };
 
-            auto isValidUtf = [](const QString &str) -> bool {
-                for (int i = 0; i < str.length(); ++i) {
-                    if (str[i].isHighSurrogate()) {
-                        // Must be followed by a low surrogate
-                        if (i + 1 >= str.length() || !str[i + 1].isLowSurrogate()) {
-                            return false; // Error: Unpaired high surrogate
-                        }
-                        i++; // Skip the low surrogate as we've validated the pair
-                    } else if (str[i].isLowSurrogate()) {
-                        // If we hit a low surrogate here, it means it wasn't
-                        // preceded by a high surrogate (which would have triggered the 'if' above)
-                        return false; // Error: Orphaned low surrogate
-                    }
-                }
-                return true;
-            };
+            QString str = QString::fromStdString( s );
+            unescape( str );
 
-            QJsonParseError Err;
-            QString S = decodeUtfChars(s);
-            if (!isValidUtf(S)) {
+            QUtf8StringView sv( str.toUtf8().data() );
+
+            if( ! sv.isValidUtf8() ) {
                 throw jsonata::JException("D3141", 0);
             }
 
-            auto r = QJsonValue::fromJson(s.data(), &Err);
+            QJsonParseError Err;
+            auto r = QJsonValue::fromJson(str.toUtf8(), &Err);
             if (Err.error != QJsonParseError::NoError) {
                 throw jsonata::JException("D3141", Err.offset, Err.errorString().data());
             }

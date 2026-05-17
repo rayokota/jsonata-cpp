@@ -66,4 +66,24 @@ struct isOptional<std::optional<U>> : std::true_type {};
 template<typename T>
 inline constexpr bool isOptional_v = isOptional<std::decay_t<T>>::value;
 
+//
+// given a type T of either std::optional<X> or X, extract X
+//
+
+// 1. The "Default" case: If it's not an optional, just return the type itself.
+template <typename T>
+struct unwrapType {
+        using type = T;
+};
+
+// 2. The "Special" case: If it IS an optional, extract the inner value_type.
+template <typename T>
+struct unwrapType<std::optional<T>> {
+        using type = T;
+};
+
+// Helper alias to keep your code clean
+template <typename T>
+using unwrapType_t = typename unwrapType<T>::type;
+
 

@@ -33,7 +33,7 @@ endif()
 find_package(Qt6 QUIET COMPONENTS Core)
 if(Qt6_FOUND)
     list( APPEND JSONATA_ENABLED_BACKENDS QJsonValue QVariant )
-    set( JSONATA_QT_ENABLED true )
+   set( JSONATA_QT_ENABLED true )
 else()
     warning( "Cannot find Qt >=6.10." )
 endif()
@@ -158,6 +158,12 @@ if(JSONATA_BUILD_TESTS)
         JSONATA_TEST_BACKEND=${FIRST_BACKEND}
     )
 
+    if(WIN32)
+        set_target_properties(qgenerate PROPERTIES
+            WIN32_EXECUTABLE FALSE
+        )
+    endif()
+
     foreach( BE IN LISTS JSONATA_ENABLED_BACKENDS )
         # 1. Strip the extension to create a clean executable name
         string(REPLACE "::" "_" CLEAN_BE ${BE})
@@ -180,6 +186,12 @@ if(JSONATA_BUILD_TESTS)
             gtest
             Threads::Threads
         )
+        if(WIN32)
+            set_target_properties(${EXE_NAME} PROPERTIES
+                WIN32_EXECUTABLE FALSE
+            )
+        endif()
+
     endforeach()
 
 

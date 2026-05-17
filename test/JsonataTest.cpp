@@ -475,7 +475,7 @@ namespace jsonata
 
                 overrideObj.getPropertyValueOfType(
                     "alternateResult",
-                    Array(to.alternateResult)
+                    to.alternateResult
                     );
 
                 overrideObj.getPropertyValueOfType(

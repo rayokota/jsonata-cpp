@@ -228,8 +228,7 @@ std::any Jsonata::_evaluate(std::shared_ptr<Parser::Symbol> expr,
         result = std::any{};
     }
 
-    std::cout << "RRRRRRRRRRR" << Jsonata::fromAny<QVariant>(result).dump() << std::endl;
-
+    // std::cout << "RRRRRRRRRRR" << Jsonata::fromAny<QVariant>(result).dump() << std::endl;
 
     // Apply predicates if present - matches Java lines 210-213
     if (!expr->predicate.empty()) {

@@ -489,7 +489,7 @@ namespace jsonata
             }
 
             template<typename T>
-                requires jsonata::isReadCompatible<T>
+                requires jsonata::isWriteCompatible<T>
             static jsonata::backend<T> fromAny(const std::any &value)
             {
                 if (!value.has_value())

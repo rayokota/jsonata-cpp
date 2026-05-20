@@ -23,6 +23,7 @@ namespace jsonata
     struct json_bridge_impl<QVariant,void>
     {
             using is_json_bridge_type = void; // Tag to satisfy the concept
+            using sortedPartner = QVariant;
 
             static QVariant create(auto &&value)
             {
@@ -281,33 +282,101 @@ namespace jsonata
 
             static QVariant parse(const std::string &s)
             {
-                auto unescape = [](QString & input ) {
-                    // Match \u followed by 4 hex digits
-                    static QRegularExpression re("\\\\u([0-9a-fA-F]{4})");
-                    QRegularExpressionMatchIterator i = re.globalMatch(input);
+                auto convert = []( const QString & input, QString & ok ) -> QString {
 
-                    int offset = 0;
-                    while (i.hasNext()) {
-                        QRegularExpressionMatch match = i.next();
+                    auto utf = []( const QStringView & V, qsizetype off, QString & errorCode ) {
                         bool ok;
-                        ushort code = match.captured(1).toUShort(&ok, 16);
-
-                        if (ok) {
-                            QString replacement = QChar(code);
-                            input.replace(match.capturedStart() + offset, match.capturedLength(), replacement);
-                            // Adjust offset because the string length changed
-                            offset += (replacement.length() - match.capturedLength());
+                        ushort code = V.sliced( off, 4 ).toUShort(&ok, 16);
+                        if( ok ) {
+                            return QChar(code);
                         }
+                        errorCode = "S0104"; // invalid \\u sequence
+                        return QChar();
+                    };
+
+                    auto validUtfSequence = [utf]( const QStringView & v,
+                                                  qsizetype len, qsizetype off, const QString & match, QString & errorCode ) -> qsizetype {
+                        off += match.length();
+                        QChar f = utf( v, off, errorCode );
+                        off += 4;
+                        if( ! errorCode.isEmpty() ) {
+                            return off;
+                        }
+                        if( f.isSurrogate( ) ) {
+                            if( (off + (4+match.length())) >= len || v.sliced( off, match.length() ) != match ) {
+                                errorCode = "S3141"; // invalid utf character sequence
+                                return off;
+                            }
+                            off += match.length();
+                            QChar s = utf( v, off, errorCode );
+                            off += 4;
+                            if( ! errorCode.isEmpty() ) {
+                                return off;
+                            }
+                            if( ! f.isHighSurrogate() || ! s.isLowSurrogate() ) {
+                                errorCode = "S3141"; // invalid utf character sequence
+                                return off;
+                            }
+                        }
+                        return off;
+                    };
+
+                    QString errorCode;
+                    QString out;
+                    bool dQuoted = false;
+                    qsizetype i = 0;
+                    QStringView v(input);
+
+                    while( i < input.length() ) {
+                        if( input[i] == '\\' ) {
+
+                            if( i+1< input.length() && v.sliced( i, 2 ) == "\\\"" ) {
+                                dQuoted = ! dQuoted;
+                                out += '"';
+                                i += 2;
+                                continue;
+                            }
+
+                            if( dQuoted ) {
+                                if( i+6< input.length() &&  v.sliced( i, 3 ) == "\\\\u" ) {
+                                    i = validUtfSequence( v, input.length(), i, "\\\\u", errorCode );
+                                    if( ! errorCode.isEmpty() ) {
+                                        break;
+                                    }
+                                }
+
+                                if( i+1< input.length() && v.sliced( i, 2 ) == "\\\\" ) {
+                                    out += '\\';
+                                    i += 2;
+                                    continue;
+                                }
+                            } else {
+                                if( i+5< input.length() && v.sliced( i, 2 ) == "\\u" ) {
+                                    // start of utf16 char
+                                    i = validUtfSequence( v, input.length(), i, "\\u", ok );
+                                    if( ! errorCode.isEmpty() ) {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // remove \ will insert next char
+                            i ++;
+                            continue;
+                        }
+
+                        out += input[i];
+                        i ++;
                     }
+                    return out;
                 };
 
+                QString errorCode;
                 QString str = QString::fromStdString( s );
-                unescape( str );
-
-                QUtf8StringView sv( str.toUtf8().data() );
-
-                if( ! sv.isValidUtf8() ) {
-                    throw jsonata::JException("D3141", 0);
+                QString convertedStr = convert( str, errorCode );
+                if( ! errorCode.isEmpty() ) {
+                    // It's a lone surrogate! (Like your \uD800 test case)
+                    throw jsonata::JException( errorCode.toStdString(), 0);
                 }
 
                 QJsonParseError Err;

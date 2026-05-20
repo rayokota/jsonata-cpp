@@ -130,7 +130,7 @@ bool Signature::isArrayType(const std::any &value) {
 std::string Signature::checkObjectType(const std::any &value) {
     // Try map (object)
     try {
-        auto r = std::any_cast<std::unordered_map<std::string, std::any>>(value);
+        auto r = std::any_cast<jsonata::ordered_map<std::string, std::any>>(value);
         return "o";
     } catch (const std::bad_any_cast &) {
         // Try shared_ptr<map> - check if it's a regex object

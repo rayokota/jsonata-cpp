@@ -28,6 +28,7 @@ namespace jsonata
 
     template<typename T>
     concept isBasicallyReadCompatible = requires(const T &ConstObj) {
+        typename json_bridge<T>::sortedPartner;
         json_bridge<T>::forAll(ConstObj, [](const std::string &, auto &) {});
         json_bridge<T>::array();
         json_bridge<T>::object();
@@ -197,6 +198,7 @@ namespace jsonata
     {
             // Use the base type for bridge lookups
             using BaseT = std::remove_cvref_t<T>;
+            using sortedPartner = backend<typename json_bridge<T>::sortedPartner>;
 
             backend() {}
             backend(std::nullptr_t) {}

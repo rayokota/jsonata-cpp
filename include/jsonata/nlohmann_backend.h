@@ -29,6 +29,8 @@ struct json_bridge_impl<T,void>
 {
         using BaseT = std::remove_cvref_t<T>;
         using is_json_bridge_type = void; // Tag to satisfy the concept
+        // all nlohmann have json a sorted version
+        using sortedPartner = nlohmann::json;
 
         static BaseT create(auto&& value) {
             using V = std::decay_t<decltype(value)>;

@@ -17,6 +17,7 @@
  * limitations under the License.
  */
 #include "jsonata/Jsonata.h"
+#include "jsonata/ordered_map.h"
 
 #include <algorithm>
 #include <cmath>
@@ -751,9 +752,9 @@ std::any Jsonata::evaluateWildcard(std::shared_ptr<Parser::Symbol> expr,
     try {
         // Handle map/object input
         if (_input.type() ==
-            typeid(std::unordered_map<std::string, std::any>)) {
+            typeid(jsonata::ordered_map<std::string, std::any>)) {
             auto map =
-                std::any_cast<std::unordered_map<std::string, std::any>>(
+                std::any_cast<jsonata::ordered_map<std::string, std::any>>(
                     _input);
             for (const auto& [key, value] : map) {
                 // Java reference line 713: if((value instanceof List))
@@ -871,7 +872,7 @@ std::any Jsonata::evaluatePath(std::shared_ptr<Parser::Symbol> expr,
             if (tupleBindings.has_value()) {
                 for (const auto& tupleAny : *tupleBindings) {
                     auto tuple = std::any_cast<
-                        std::unordered_map<std::string, std::any>>(tupleAny);
+                        jsonata::ordered_map<std::string, std::any>>(tupleAny);
                     auto it = tuple.find("@");
                     if (it != tuple.end()) {
                         result.push_back(it->second);
@@ -1155,14 +1156,14 @@ bool Jsonata::deepEquals(const std::any& lhs, const std::any& rhs) {
     // Handle object comparison - Java uses Map.equals() which compares all
     // key-value pairs
     if (lhsConverted.type() ==
-            typeid(std::unordered_map<std::string, std::any>) &&
+            typeid(jsonata::ordered_map<std::string, std::any>) &&
         rhsConverted.type() ==
-            typeid(std::unordered_map<std::string, std::any>)) {
+            typeid(jsonata::ordered_map<std::string, std::any>)) {
         const auto& leftMap =
-            std::any_cast<const std::unordered_map<std::string, std::any>&>(
+            std::any_cast<const jsonata::ordered_map<std::string, std::any>&>(
                 lhsConverted);
         const auto& rightMap =
-            std::any_cast<const std::unordered_map<std::string, std::any>&>(
+            std::any_cast<const jsonata::ordered_map<std::string, std::any>&>(
                 rhsConverted);
 
         if (leftMap.size() != rightMap.size()) {
@@ -1360,7 +1361,7 @@ void Jsonata::recurseDescendants(const std::any& input,
         // in the codebase
         try {
             auto map =
-                std::any_cast<std::unordered_map<std::string, std::any>>(
+                std::any_cast<jsonata::ordered_map<std::string, std::any>>(
                     input);
             for (const auto& [key, value] : map) {
                 recurseDescendants(value, results);
@@ -1552,9 +1553,9 @@ std::any Jsonata::evaluateSort(std::shared_ptr<Parser::Symbol> expr,
                 // Extract context from tuple map
                 try {
                     if (a.type() ==
-                        typeid(std::unordered_map<std::string, std::any>)) {
+                        typeid(jsonata::ordered_map<std::string, std::any>)) {
                         auto tupleMap = std::any_cast<
-                            std::unordered_map<std::string, std::any>>(a);
+                            jsonata::ordered_map<std::string, std::any>>(a);
                         auto it = tupleMap.find("@");
                         if (it != tupleMap.end()) {
                             contextA = it->second;
@@ -1577,9 +1578,9 @@ std::any Jsonata::evaluateSort(std::shared_ptr<Parser::Symbol> expr,
             if (isTupleSort) {
                 try {
                     if (b.type() ==
-                        typeid(std::unordered_map<std::string, std::any>)) {
+                        typeid(jsonata::ordered_map<std::string, std::any>)) {
                         auto tupleMap = std::any_cast<
-                            std::unordered_map<std::string, std::any>>(b);
+                            jsonata::ordered_map<std::string, std::any>>(b);
                         auto it = tupleMap.find("@");
                         if (it != tupleMap.end()) {
                             contextB = it->second;
@@ -1785,16 +1786,16 @@ std::any Jsonata::evaluateTransform(std::shared_ptr<Parser::Symbol> expr,
                 if (update.has_value()) {
                     if (update.type() ==
                             typeid(
-                                std::unordered_map<std::string, std::any>) &&
+                                jsonata::ordered_map<std::string, std::any>) &&
                         match.type() ==
                             typeid(
-                                std::unordered_map<std::string, std::any>)) {
+                                jsonata::ordered_map<std::string, std::any>)) {
                         // Java lines 1457-1459: merge the update
                         auto& matchMap = std::any_cast<
-                            std::unordered_map<std::string, std::any>&>(
+                            jsonata::ordered_map<std::string, std::any>&>(
                             match);
                         const auto& updateMap =
-                            std::any_cast<const std::unordered_map<
+                            std::any_cast<const jsonata::ordered_map<
                                 std::string, std::any>&>(update);
 
                         for (const auto& [prop, value] : updateMap) {
@@ -1925,9 +1926,9 @@ std::any Jsonata::evaluateFilter(std::shared_ptr<Parser::Symbol> predicate,
             }
             if (isTupleStream &&
                 item.type() ==
-                    typeid(std::unordered_map<std::string, std::any>)) {
+                    typeid(jsonata::ordered_map<std::string, std::any>)) {
                 auto tupleMap =
-                    std::any_cast<std::unordered_map<std::string, std::any>>(
+                    std::any_cast<jsonata::ordered_map<std::string, std::any>>(
                         item);
                 auto it = tupleMap.find("@");
                 if (it != tupleMap.end()) {
@@ -2033,7 +2034,7 @@ std::any Jsonata::evaluateBlock(std::shared_ptr<Parser::Symbol> expr,
 //         return out;
 //     }
 //     if (j.isObject()) {
-//         std::unordered_map<std::string, std::any> m;
+//         jsonata::ordered_map<std::string, std::any> m;
 //         jsonata::copy( j, m, [](const jsonata::ordered_json&el){
 //             return toAny(el);
 //         });
@@ -2099,10 +2100,10 @@ std::any Jsonata::evaluateBlock(std::shared_ptr<Parser::Symbol> expr,
 //         });
 //         return arr;
 //     }
-//     if (type == typeid(std::unordered_map<std::string, std::any>)) {
+//     if (type == typeid(jsonata::ordered_map<std::string, std::any>)) {
 //         jsonata::ordered_json obj = jsonata::ordered_json::object();
 //         const auto& map =
-//             std::any_cast<const std::unordered_map<std::string, std::any>&>(
+//             std::any_cast<const jsonata::ordered_map<std::string, std::any>&>(
 //                 value);
 //         jsonata::copy( map, obj, []( const std::any & a ) {
 //             return fromAny(a);
@@ -2148,7 +2149,7 @@ std::any Jsonata::evaluateBlock(std::shared_ptr<Parser::Symbol> expr,
 //         return out;
 //     }
 //     if (j.isObject()) {
-//         std::unordered_map<std::string, std::any> m;
+//         jsonata::ordered_map<std::string, std::any> m;
 //         jsonata::copy( j, m, []( const jsonata::json & el ) {
 //             return jsonToAny(el);
 //         });
@@ -2213,10 +2214,10 @@ std::any Jsonata::evaluateBlock(std::shared_ptr<Parser::Symbol> expr,
 //         });
 //         return arr;
 //     }
-//     if (type == typeid(std::unordered_map<std::string, std::any>)) {
+//     if (type == typeid(jsonata::ordered_map<std::string, std::any>)) {
 //         jsonata::json obj = jsonata::json::object();
 //         const auto& map =
-//             std::any_cast<const std::unordered_map<std::string, std::any>&>(
+//             std::any_cast<const jsonata::ordered_map<std::string, std::any>&>(
 //                 value);
 //         jsonata::copy( map, obj, []( const std::any & a ) {
 //             return anyToJson(a);
@@ -2322,7 +2323,7 @@ std::shared_ptr<Frame> Jsonata::createFrameFromTuple(
     // Java reference lines 324-329: createFrameFromTuple implementation
     auto frame = createFrame(environment);
     auto tuple =
-        std::any_cast<std::unordered_map<std::string, std::any>>(tupleAny);
+        std::any_cast<jsonata::ordered_map<std::string, std::any>>(tupleAny);
     for (const auto& [key, value] : tuple) {
         frame->bind(key, value);
     }
@@ -2341,15 +2342,15 @@ std::any Jsonata::reduceTupleStream(const std::any& tupleStream) {
         return std::any{};
     }
 
-    std::unordered_map<std::string, std::any> result;
+    jsonata::ordered_map<std::string, std::any> result;
     // Java line 1144: result.putAll(tupleStream.get(0));
     result =
-        std::any_cast<std::unordered_map<std::string, std::any>>(tuples[0]);
+        std::any_cast<jsonata::ordered_map<std::string, std::any>>(tuples[0]);
 
     // Java lines 1147-1158: merge remaining tuples
     for (size_t i = 1; i < tuples.size(); i++) {
         const auto& el =
-            std::any_cast<std::unordered_map<std::string, std::any>>(
+            std::any_cast<jsonata::ordered_map<std::string, std::any>>(
                 tuples[i]);
         for (const auto& [prop, value] : el) {
             // Java line 1154: result.put(prop,
@@ -2501,154 +2502,14 @@ std::any Jsonata::evaluate(const std::any anyInput,
         // Clear TLS after evaluation to avoid dangling references
         tls_input_.reset();
         tls_environment_.reset();
-        std::cout << "RRR1" << Jsonata::fromAny<QVariant>(result).dump() << std::endl;
-        std::cout << "RRR2" << Jsonata::fromAny<QVariant>(Utils::convertNulls(result)).dump() << std::endl;
+        // std::cout << "RRR1" << Jsonata::fromAny<QVariant>(result).dump() << std::endl;
+        // std::cout << "RRR2" << Jsonata::fromAny<QVariant>(Utils::convertNulls(result)).dump() << std::endl;
         return Utils::convertNulls(result);
     } catch (const std::exception& err) {
         // TODO: populateMessage(err);
         throw;
     }
 }
-
-// jsonata::ordered_json Jsonata::evaluate(const jsonata::ordered_json& input) {
-//     return evaluate(input, nullptr);
-// }
-
-// jsonata::ordered_json Jsonata::evaluate(const jsonata::ordered_json& input,
-//                                          std::shared_ptr<Frame> bindings) {
-//     currentInstance_ = this;
-
-//     // Check for syntax errors (equivalent to Java's check for errors != null)
-//     if (!expression_) {
-//         throw JException("S0500", 0);  // Expression compilation failed
-//     }
-
-//     // Convert JSON input to std::any domain for the evaluator
-//     std::any anyInput = toAny(input);
-
-//     // Always evaluate in a fresh child frame of the shared environment,
-//     // then (optionally) copy provided bindings into it. This avoids
-//     // concurrent mutations of the shared environment.
-//     std::shared_ptr<Frame> exec_env = createFrame(environment_);
-//     if (bindings != nullptr) {
-//         for (const auto& [key, value] : bindings->getBindings()) {
-//             exec_env->bind(key, value);
-//         }
-//     }
-
-//     // TODO: capture timestamp for $now() and $millis() functions
-//     // timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-//     //     std::chrono::system_clock::now().time_since_epoch()).count();
-
-//     // CRITICAL: if the input is a JSON array, wrap it in a singleton sequence
-//     // Java reference lines 2575-2579:
-//     // if((input instanceof List) && !Utils.isSequence(input)) {
-//     //     input = Utils.createSequence(input);
-//     //     ((JList)input).outerWrapper = true;
-//     // }
-//     std::any processedInput = anyInput;
-//     if (anyInput.has_value() && Utils::isArray(anyInput) &&
-//         !Utils::isSequence(anyInput)) {
-//         auto sequence = Utils::createSequence(anyInput);
-//         sequence.outerWrapper = true;
-//         processedInput = sequence;
-//     }
-
-//     // CRITICAL: put the processed input (which may be wrapped) into the
-//     // fresh execution environment as the root object "$"
-//     exec_env->bind("$", processedInput);
-
-//     if (validateInput_) {
-//         Functions::validateInput(processedInput);
-//     }
-
-//     std::any result;
-//     try {
-//         // Set thread-local input/environment for this evaluation
-//         tls_input_ = processedInput;
-//         tls_environment_ = exec_env;
-//         result = evaluate(expression_, processedInput, exec_env);
-//         // Clear TLS after evaluation to avoid dangling references
-//         tls_input_.reset();
-//         tls_environment_.reset();
-//         result = Utils::convertNulls(result);
-//         // Convert result back to jsonata::ordered_json
-//         return fromAny(result);
-//     } catch (const std::exception& err) {
-//         // TODO: populateMessage(err);
-//         throw;
-//     }
-// }
-
-// jsonata::ordered_json Jsonata::evaluate(std::nullptr_t) {
-//     return evaluate(jsonata::ordered_json());
-// }
-
-// jsonata::ordered_json Jsonata::evaluate(std::nullptr_t,
-//                                          std::shared_ptr<Frame> bindings) {
-//     return evaluate(jsonata::ordered_json(), bindings);
-// }
-
-// // Unordered jsonata::json variants
-// jsonata::json Jsonata::evaluate(const jsonata::json& input) {
-//     return evaluate(input, nullptr);
-// }
-
-// jsonata::json Jsonata::evaluate(const jsonata::json& input,
-//                                  std::shared_ptr<Frame> bindings) {
-//     currentInstance_ = this;
-
-//     if (!expression_) {
-//         throw JException("S0500", 0);
-//     }
-
-//     // Convert JSON input to std::any domain for the evaluator
-//     std::any anyInput = jsonToAny(input);
-
-//     std::shared_ptr<Frame> exec_env = createFrame(environment_);
-//     if (bindings != nullptr) {
-//         for (const auto& [key, value] : bindings->getBindings()) {
-//             exec_env->bind(key, value);
-//         }
-//     }
-
-//     std::any processedInput = anyInput;
-//     if (anyInput.has_value() && Utils::isArray(anyInput) &&
-//         !Utils::isSequence(anyInput)) {
-//         auto sequence = Utils::createSequence(anyInput);
-//         sequence.outerWrapper = true;
-//         processedInput = sequence;
-//     }
-
-//     exec_env->bind("$", processedInput);
-
-//     if (validateInput_) {
-//         Functions::validateInput(processedInput);
-//     }
-
-//     std::any result;
-//     try {
-//         tls_input_ = processedInput;
-//         tls_environment_ = exec_env;
-//         result = evaluate(expression_, processedInput, exec_env);
-//         tls_input_.reset();
-//         tls_environment_.reset();
-//         result = Utils::convertNulls(result);
-//         // Convert result to jsonata::json
-//         return anyToJson(result);
-//     } catch (const std::exception& err) {
-//         throw;
-//     }
-// }
-
-// jsonata::json Jsonata::evaluateUnordered(std::nullptr_t) {
-//     return evaluate(jsonata::json());
-// }
-
-// jsonata::json Jsonata::evaluateUnordered(std::nullptr_t,
-//                                           std::shared_ptr<Frame> bindings) {
-//     return evaluate(jsonata::json(), bindings);
-// }
 
 std::any Jsonata::apply(const std::any& proc, const Utils::JList& args,
                         const std::any& input,
@@ -2735,7 +2596,7 @@ static std::any regexClosure(std::shared_ptr<RegexState> state) {
     if (state->it == state->end) return std::any{};
     auto match = *state->it;
     ++(state->it);
-    std::unordered_map<std::string, std::any> result;
+    jsonata::ordered_map<std::string, std::any> result;
     result["match"] = std::string(match.str());
     result["start"] = static_cast<long long>(match.position());
     result["end"] = static_cast<long long>(match.position() + match.length());
@@ -2919,9 +2780,9 @@ std::any Jsonata::applyProcedure(const std::any& _proc,
                 std::shared_ptr<Frame> environment;
                 if (symbol->value.has_value() &&
                     symbol->value.type() ==
-                        typeid(std::unordered_map<std::string, std::any>)) {
+                        typeid(jsonata::ordered_map<std::string, std::any>)) {
                     auto closureMap = std::any_cast<
-                        std::unordered_map<std::string, std::any>>(
+                        jsonata::ordered_map<std::string, std::any>>(
                         symbol->value);
                     if (closureMap.find("environment") != closureMap.end()) {
                         try {
@@ -2985,16 +2846,16 @@ std::any Jsonata::applyProcedure(const std::any& _proc,
                             return std::any_cast<bool>(a) ==
                                    std::any_cast<bool>(b);
                         if (a.type() ==
-                                typeid(std::unordered_map<std::string,
+                                typeid(jsonata::ordered_map<std::string,
                                                              std::any>) &&
                             b.type() ==
-                                typeid(std::unordered_map<std::string,
+                                typeid(jsonata::ordered_map<std::string,
                                                              std::any>)) {
                             const auto& ma =
-                                std::any_cast<const std::unordered_map<
+                                std::any_cast<const jsonata::ordered_map<
                                     std::string, std::any>&>(a);
                             const auto& mb =
-                                std::any_cast<const std::unordered_map<
+                                std::any_cast<const jsonata::ordered_map<
                                     std::string, std::any>&>(b);
                             if (ma.size() != mb.size()) return false;
                             for (const auto& [k, va] : ma) {
@@ -3036,19 +2897,19 @@ std::any Jsonata::applyProcedure(const std::any& _proc,
 
                     std::function<bool(
                         std::any&, const std::any&,
-                        const std::unordered_map<std::string, std::any>&)>
+                        const jsonata::ordered_map<std::string, std::any>&)>
                         applyUpdateToFirstMatch =
                             [&](std::any& node, const std::any& target,
-                                const std::unordered_map<
+                                const jsonata::ordered_map<
                                     std::string, std::any>& updateMap) -> bool {
                         if (node.type() ==
-                                typeid(std::unordered_map<std::string,
+                                typeid(jsonata::ordered_map<std::string,
                                                              std::any>) &&
                             target.type() ==
-                                typeid(std::unordered_map<std::string,
+                                typeid(jsonata::ordered_map<std::string,
                                                              std::any>)) {
                             if (deepEqualsAny(node, target)) {
-                                auto& m = std::any_cast<std::unordered_map<
+                                auto& m = std::any_cast<jsonata::ordered_map<
                                     std::string, std::any>&>(node);
                                 for (const auto& [k, v] : updateMap) {
                                     m[k] = v;
@@ -3056,7 +2917,7 @@ std::any Jsonata::applyProcedure(const std::any& _proc,
                                 return true;
                             }
                             auto& m = std::any_cast<
-                                std::unordered_map<std::string, std::any>&>(
+                                jsonata::ordered_map<std::string, std::any>&>(
                                 node);
                             for (auto it = m.begin(); it != m.end(); ++it) {
                                 if (applyUpdateToFirstMatch(it->second, target,
@@ -3095,13 +2956,13 @@ std::any Jsonata::applyProcedure(const std::any& _proc,
                                 const std::vector<std::string>& deletions)
                         -> bool {
                         if (node.type() ==
-                                typeid(std::unordered_map<std::string,
+                                typeid(jsonata::ordered_map<std::string,
                                                              std::any>) &&
                             target.type() ==
-                                typeid(std::unordered_map<std::string,
+                                typeid(jsonata::ordered_map<std::string,
                                                              std::any>)) {
                             if (deepEqualsAny(node, target)) {
-                                auto& m = std::any_cast<std::unordered_map<
+                                auto& m = std::any_cast<jsonata::ordered_map<
                                     std::string, std::any>&>(node);
                                 for (const auto& key : deletions) {
                                     m.erase(key);
@@ -3109,7 +2970,7 @@ std::any Jsonata::applyProcedure(const std::any& _proc,
                                 return true;
                             }
                             auto& m = std::any_cast<
-                                std::unordered_map<std::string, std::any>&>(
+                                jsonata::ordered_map<std::string, std::any>&>(
                                 node);
                             for (auto it = m.begin(); it != m.end(); ++it) {
                                 if (applyDeleteToFirstMatch(it->second, target,
@@ -3148,13 +3009,13 @@ std::any Jsonata::applyProcedure(const std::any& _proc,
                             instance->evaluate(update, match, environment);
                         if (updateValue.has_value()) {
                             if (updateValue.type() !=
-                                typeid(std::unordered_map<std::string,
+                                typeid(jsonata::ordered_map<std::string,
                                                              std::any>)) {
                                 throw JException("T2011", update->position,
                                                  updateValue);
                             }
                             const auto& updateMap =
-                                std::any_cast<const std::unordered_map<
+                                std::any_cast<const jsonata::ordered_map<
                                     std::string, std::any>&>(updateValue);
                             // Apply update to the first occurrence of match
                             // within result
@@ -3166,10 +3027,10 @@ std::any Jsonata::applyProcedure(const std::any& _proc,
                             // delete uses a structure that deep-equals the
                             // updated node in 'result'.
                             if (match.type() ==
-                                typeid(std::unordered_map<std::string,
+                                typeid(jsonata::ordered_map<std::string,
                                                              std::any>)) {
                                 auto& matchMap =
-                                    std::any_cast<std::unordered_map<
+                                    std::any_cast<jsonata::ordered_map<
                                         std::string, std::any>&>(match);
                                 for (const auto& [k, v] : updateMap) {
                                     matchMap[k] = v;
@@ -3298,7 +3159,7 @@ std::any Jsonata::evaluateStages(
                             std::string stageValue =
                                 std::any_cast<std::string>(stage->value);
                             auto tuple = std::any_cast<
-                                std::unordered_map<std::string, std::any>>(
+                                jsonata::ordered_map<std::string, std::any>>(
                                 tupleList[ee]);
                             tuple[stageValue] = static_cast<int64_t>(ee);
                             tupleList[ee] = std::any(tuple);
@@ -3311,9 +3172,9 @@ std::any Jsonata::evaluateStages(
                     for (size_t ee = 0; ee < resultList.size(); ee++) {
                         if (resultList[ee].type() ==
                             typeid(
-                                std::unordered_map<std::string, std::any>)) {
+                                jsonata::ordered_map<std::string, std::any>)) {
                             auto tuple = std::any_cast<
-                                std::unordered_map<std::string, std::any>>(
+                                jsonata::ordered_map<std::string, std::any>>(
                                 resultList[ee]);
                             if (stage->value.has_value()) {
                                 std::string stageValue =
@@ -3451,7 +3312,7 @@ std::any Jsonata::evaluateTupleStep(
             if (sorted.has_value() && Utils::isArray(sorted)) {
                 auto sortedVec = Utils::arrayify(sorted);
                 for (size_t i = 0; i < sortedVec.size(); ++i) {
-                    std::unordered_map<std::string, std::any> tuple;
+                    jsonata::ordered_map<std::string, std::any> tuple;
                     tuple["@"] = sortedVec[i];
                     if (expr->index.has_value()) {
                         try {
@@ -3490,7 +3351,7 @@ std::any Jsonata::evaluateTupleStep(
         // Java line 435: create initial tuple bindings (only when tupleBindings
         // is null, not just empty)
         for (const auto& item : input) {
-            std::unordered_map<std::string, std::any> tuple;
+            jsonata::ordered_map<std::string, std::any> tuple;
             tuple["@"] = item;
             bindings.push_back(std::any(tuple));
         }
@@ -3499,7 +3360,7 @@ std::any Jsonata::evaluateTupleStep(
     // Java reference lines 438-472: process each tuple binding
     for (const auto& bindingAny : bindings) {
         auto binding =
-            std::any_cast<std::unordered_map<std::string, std::any>>(
+            std::any_cast<jsonata::ordered_map<std::string, std::any>>(
                 bindingAny);
         // Create frame from tuple - Java line 439
         auto stepEnv = createFrameFromTuple(environment, bindingAny);
@@ -3523,14 +3384,14 @@ std::any Jsonata::evaluateTupleStep(
 
             // Java lines 449-469: create output tuples
             for (size_t i = 0; i < resVec.size(); ++i) {
-                std::unordered_map<std::string, std::any> tuple(
+                jsonata::ordered_map<std::string, std::any> tuple(
                     binding);  // Copy existing bindings
 
                 if (resVec.tupleStream) {
                     // cast resVec[i] to a map and overwrite existing keys
                     // (match Java Map.putAll semantics)
                     auto resTuple = std::any_cast<
-                        std::unordered_map<std::string, std::any>>(
+                        jsonata::ordered_map<std::string, std::any>>(
                         resVec[i]);
                     for (const auto& kv : resTuple) {
                         tuple[kv.first] = kv.second;
@@ -3592,14 +3453,14 @@ std::any Jsonata::evaluateGroupExpression(std::shared_ptr<Parser::Symbol> expr,
     if (!expr) return std::any{};
 
     // Port exact Java implementation: Jsonata.java lines 1051-1134
-    std::unordered_map<std::string, std::any> result;
+    jsonata::ordered_map<std::string, std::any> result;
 
     // C++ equivalent of Java's LinkedHashMap<Object,GroupEntry>
     struct GroupEntry {
         std::any data;
         int64_t exprIndex;
     };
-    std::unordered_map<std::string, GroupEntry> groups;
+    jsonata::ordered_map<std::string, GroupEntry> groups;
 
     // Java line 1054: var reduce = (_input instanceof JList) &&
     // ((JList)_input).tupleStream ? true : false; For now, simplify this - the
@@ -3637,7 +3498,7 @@ std::any Jsonata::evaluateGroupExpression(std::shared_ptr<Parser::Symbol> expr,
                 ? createFrameFromTuple(
                       environment,
                       std::any_cast<
-                          std::unordered_map<std::string, std::any>>(item))
+                          jsonata::ordered_map<std::string, std::any>>(item))
                 : environment;
 
         for (size_t pairIndex = 0; pairIndex < expr->lhsObject.size();
@@ -3649,7 +3510,7 @@ std::any Jsonata::evaluateGroupExpression(std::shared_ptr<Parser::Symbol> expr,
             std::any keyContext = item;
             if (reduce) {
                 auto itemMap =
-                    std::any_cast<std::unordered_map<std::string, std::any>>(
+                    std::any_cast<jsonata::ordered_map<std::string, std::any>>(
                         item);
                 auto atIt = itemMap.find("@");
                 keyContext =
@@ -3716,7 +3577,7 @@ std::any Jsonata::evaluateGroupExpression(std::shared_ptr<Parser::Symbol> expr,
         if (reduce) {
             auto tuple = reduceTupleStream(entry.data);
             auto tupleMap =
-                std::any_cast<std::unordered_map<std::string, std::any>>(
+                std::any_cast<jsonata::ordered_map<std::string, std::any>>(
                     tuple);
             auto atIt = tupleMap.find("@");
             context = (atIt != tupleMap.end()) ? atIt->second : std::any{};
@@ -3762,7 +3623,7 @@ std::any Jsonata::evaluateTransformExpression(
     transformer->arguments.push_back(dummyArg);
 
     // Store the closure environment
-    transformer->value = std::unordered_map<std::string, std::any>{
+    transformer->value = jsonata::ordered_map<std::string, std::any>{
         {"input", input}, {"environment", environment}};
 
     return transformer;

@@ -151,7 +151,8 @@ if(JSONATA_BUILD_TESTS)
 
     # Create test generator executable
     add_executable(qgenerate test/Generate.cpp
-        include/jsonata/backend.h)
+        include/jsonata/backend.h
+        include/jsonata/ordered_map.h)
     target_link_libraries(qgenerate qjsonata)
     list(GET JSONATA_ENABLED_BACKENDS 0 FIRST_BACKEND)
     target_compile_definitions(qgenerate PRIVATE

@@ -82,8 +82,9 @@ namespace jsonata
                 // Compare using canonical jsonata::json (unordered object semantics)
                 // jsonata::json exp = jsonata::json::parse(expected.dump());
                 // jsonata::json res = jsonata::json::parse(result.dump());
-                auto exp = jsonata::backend<JSONATA_TEST_BACKEND>::parse(expected.dump());
-                auto res = jsonata::backend<JSONATA_TEST_BACKEND>::parse(result.dump());
+                const
+                auto exp = jsonata::backend<JSONATA_TEST_BACKEND>::sortedPartner::parse(expected.dump());
+                auto res = jsonata::backend<JSONATA_TEST_BACKEND>::sortedPartner::parse(result.dump());
 
                 if (unordered && exp.isArray() && res.isArray()) {
                     // Simple unordered compare via multiset of dumps

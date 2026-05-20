@@ -24,6 +24,7 @@
 #include <jsonata/utils/Constants.h>
 #include <jsonata/utils/DateTimeUtils.h>
 #include <jsonata/utils/Signature.h>
+#include <jsonata/ordered_map.h>
 #include <utf8.h>
 
 #include <algorithm>
@@ -464,12 +465,12 @@ static bool isDeepEqualForDistinct(const std::any& lhs, const std::any& rhs) {
 
         // Compare direct map objects
         if (lhs.type() ==
-            typeid(std::unordered_map<std::string, std::any>)) {
+            typeid(jsonata::ordered_map<std::string, std::any>)) {
             const auto& leftMap =
-                std::any_cast<std::unordered_map<std::string, std::any>>(
+                std::any_cast<jsonata::ordered_map<std::string, std::any>>(
                     lhs);
             const auto& rightMap =
-                std::any_cast<std::unordered_map<std::string, std::any>>(
+                std::any_cast<jsonata::ordered_map<std::string, std::any>>(
                     rhs);
 
             if (leftMap.size() != rightMap.size()) {
@@ -846,9 +847,9 @@ bool Functions::isLambda(const std::any& value) {
 
 // Deprecated: type-check helpers moved to Utils
 
-std::unordered_map<std::string, Functions::FunctionEntry>
+jsonata::ordered_map<std::string, Functions::FunctionEntry>
 Functions::getFunctionRegistry() {
-    static std::unordered_map<std::string, FunctionEntry>
+    static jsonata::ordered_map<std::string, FunctionEntry>
         registryWithSignatures = {
             // Aggregation functions
             {"sum", FunctionEntry(
@@ -1259,11 +1260,11 @@ Functions::getFunctionRegistry() {
                          (args.size() >= 2 && isString(args[1]))
                              ? std::any_cast<std::string>(args[1])
                              : "";
-                     std::unordered_map<std::string, std::any> options;
+                     jsonata::ordered_map<std::string, std::any> options;
                      if (args.size() >= 3) {
                          try {
                              options = std::any_cast<
-                                 std::unordered_map<std::string, std::any>>(
+                                 jsonata::ordered_map<std::string, std::any>>(
                                  args[2]);
                          } catch (const std::bad_any_cast&) {
                              // Ignore invalid options
@@ -1794,9 +1795,9 @@ std::optional<bool> Functions::toBoolean(const std::any& arg) {
             result = std::any_cast<bool>(arg);
             // Check for map/object
         } else if (arg.type() ==
-                   typeid(std::unordered_map<std::string, std::any>)) {
+                   typeid(jsonata::ordered_map<std::string, std::any>)) {
             const auto& map = std::any_cast<
-                const std::unordered_map<std::string, std::any>&>(arg);
+                const jsonata::ordered_map<std::string, std::any>&>(arg);
             result = !map.empty();
         }
         // Functions are falsy
@@ -2187,7 +2188,7 @@ std::any Functions::merge(const Utils::JList& args) {
     }
 
     try {
-        std::unordered_map<std::string, std::any> result;
+        jsonata::ordered_map<std::string, std::any> result;
 
         // Convert to vector if needed
         Utils::JList inputArray;
@@ -2204,9 +2205,9 @@ std::any Functions::merge(const Utils::JList& args) {
                 try {
                     // Handle direct map
                     if (item.type() ==
-                        typeid(std::unordered_map<std::string, std::any>)) {
+                        typeid(jsonata::ordered_map<std::string, std::any>)) {
                         const auto& map =
-                            std::any_cast<const std::unordered_map<
+                            std::any_cast<const jsonata::ordered_map<
                                 std::string, std::any>&>(item);
                         for (const auto& entry : map) {
                             result[entry.first] = entry.second;
@@ -2312,11 +2313,11 @@ std::any Functions::spread(const Utils::JList& args) {
             // Handle object - create an array with one object per key-value
             // pair
         } else if (arg.type() ==
-                   typeid(std::unordered_map<std::string, std::any>)) {
+                   typeid(jsonata::ordered_map<std::string, std::any>)) {
             const auto& map = std::any_cast<
-                const std::unordered_map<std::string, std::any>&>(arg);
+                const jsonata::ordered_map<std::string, std::any>&>(arg);
             for (const auto& entry : map) {
-                std::unordered_map<std::string, std::any> obj;
+                jsonata::ordered_map<std::string, std::any> obj;
                 obj[entry.first] = entry.second;
                 result.push_back(obj);
             }
@@ -2347,13 +2348,13 @@ std::any Functions::sift(const Utils::JList& args) {
     }
 
     try {
-        std::unordered_map<std::string, std::any> result;
+        jsonata::ordered_map<std::string, std::any> result;
 
         // Handle direct map
         if (objectArg.type() ==
-            typeid(std::unordered_map<std::string, std::any>)) {
+            typeid(jsonata::ordered_map<std::string, std::any>)) {
             const auto& map = std::any_cast<
-                const std::unordered_map<std::string, std::any>&>(objectArg);
+                const jsonata::ordered_map<std::string, std::any>&>(objectArg);
             for (const auto& entry : map) {
                 // Prepare arguments for the predicate function
                 auto funcArgs = hofFuncArgs(predicateArg, entry.second,
@@ -2422,9 +2423,9 @@ void Functions::stringifyInternal(std::ostringstream& os, const std::any& arg,
             if (prettify && !vec.empty()) os << indent;
             os << "]";
         } else if (arg.type() ==
-                   typeid(std::unordered_map<std::string, std::any>)) {
+                   typeid(jsonata::ordered_map<std::string, std::any>)) {
             auto map =
-                std::any_cast<std::unordered_map<std::string, std::any>>(
+                std::any_cast<jsonata::ordered_map<std::string, std::any>>(
                     arg);
             os << "{";
             if (prettify && !map.empty()) os << "\n";
@@ -3005,10 +3006,10 @@ Utils::JList Functions::keys(const std::any& arg) {
                 result.push_back(key);
             }
         } else if (arg.type() ==
-                   typeid(std::unordered_map<std::string, std::any>)) {
+                   typeid(jsonata::ordered_map<std::string, std::any>)) {
             // Java: if (arg instanceof Map) - return keySet
             const auto& map = std::any_cast<
-                const std::unordered_map<std::string, std::any>&>(arg);
+                const jsonata::ordered_map<std::string, std::any>&>(arg);
             for (const auto& [key, value] : map) {
                 result.push_back(key);
             }
@@ -3038,9 +3039,9 @@ std::any Functions::each(const std::any& obj, const std::any& func) {
 
         // Handle direct map<string, any>
         if (obj.type() ==
-            typeid(std::unordered_map<std::string, std::any>)) {
+            typeid(jsonata::ordered_map<std::string, std::any>)) {
             const auto& map = std::any_cast<
-                const std::unordered_map<std::string, std::any>&>(obj);
+                const jsonata::ordered_map<std::string, std::any>&>(obj);
             // Java: for (var key : obj.keySet())
             for (const auto& entry : map) {
                 const std::string& key = entry.first;
@@ -3613,7 +3614,7 @@ std::string Functions::formatScientificNotation(double value,
 
 std::optional<std::string> Functions::formatNumber(
     double value, const std::string& picture,
-    const std::unordered_map<std::string, std::any>& options) {
+    const jsonata::ordered_map<std::string, std::any>& options) {
     if (std::isnan(value) || std::isinf(value)) {
         return std::nullopt;
     }
@@ -4156,11 +4157,11 @@ std::any Functions::lookup(const std::any& input, const std::string& key) {
 
             return result.empty() ? std::any{} : std::any(result);
         } else if (input.type() ==
-                   typeid(std::unordered_map<std::string, std::any>)) {
+                   typeid(jsonata::ordered_map<std::string, std::any>)) {
             // Java: if (input instanceof Map) - get key and handle null
             // detection
             const auto& map = std::any_cast<
-                const std::unordered_map<std::string, std::any>&>(input);
+                const jsonata::ordered_map<std::string, std::any>&>(input);
             auto it = map.find(key);
             if (it != map.end()) {
                 auto result = it->second;
@@ -5058,7 +5059,7 @@ Utils::JList Functions::evaluateMatcher(const std::regex& pattern,
 
     for (; iter != end; ++iter) {
         const std::smatch& smatch = *iter;
-        std::unordered_map<std::string, std::any> match;
+        jsonata::ordered_map<std::string, std::any> match;
         match["match"] = smatch.str();
         match["index"] = static_cast<int64_t>(smatch.position());
 
@@ -5459,9 +5460,9 @@ std::string Functions::safeReplaceAllFn(const std::string& str,
     return finalResult;
 }
 
-std::unordered_map<std::string, std::any> Functions::toJsonataMatch(
+jsonata::ordered_map<std::string, std::any> Functions::toJsonataMatch(
     const std::smatch& match) {
-    std::unordered_map<std::string, std::any> result;
+    jsonata::ordered_map<std::string, std::any> result;
 
     result["match"] = match.str();
 
@@ -5565,7 +5566,7 @@ std::string Functions::rightPad(const std::string& str, int64_t size,
 // formatNumber options processing helper functions
 
 Functions::FormatSymbols Functions::processOptionsArg(
-    const std::unordered_map<std::string, std::any>& options) {
+    const jsonata::ordered_map<std::string, std::any>& options) {
     FormatSymbols symbols;  // Use default values
 
     if (options.empty()) {

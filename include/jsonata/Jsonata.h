@@ -33,6 +33,7 @@
 #include <string>
 #include <vector>
 
+#include "Jsonata/ordered_map.h"
 #include "jsonata/Parser.h"
 #include "Jsonata/backend.h"
 
@@ -60,7 +61,7 @@ namespace jsonata
     {
         private:
             std::shared_ptr<Frame> parent_;
-            std::unordered_map<std::string, std::any> bindings_;
+            jsonata::ordered_map<std::string, std::any> bindings_;
             std::chrono::time_point<std::chrono::steady_clock> timestamp_;
             int64_t timeout_;
             int64_t recursionDepth_;
@@ -91,7 +92,7 @@ namespace jsonata
             std::shared_ptr<Frame> getParent() const { return parent_; }
 
             // Bindings access
-            const std::unordered_map<std::string, std::any> &getBindings() const
+            const jsonata::ordered_map<std::string, std::any> &getBindings() const
             {
                 return bindings_;
             }
@@ -184,21 +185,6 @@ namespace jsonata
             {
                 return evaluate(T(), bindings);
             }
-
-            // Main evaluation methods (ordered JSON variants)
-            // jsonata::ordered_json evaluate(const jsonata::ordered_json &input);
-            // jsonata::ordered_json evaluate(const jsonata::ordered_json &input,
-            //                                         std::shared_ptr<Frame> bindings);
-            // jsonata::ordered_json evaluate(std::nullptr_t);
-            // jsonata::ordered_json evaluate(std::nullptr_t, std::shared_ptr<Frame> bindings);
-
-            // // Main evaluation methods (unordered jsonata::json variants)
-            // jsonata::json evaluate(const jsonata::json &input);
-            // jsonata::json evaluate(const jsonata::json &input,
-            //                                 std::shared_ptr<Frame> bindings);
-            // jsonata::json evaluateUnordered(std::nullptr_t);
-            // jsonata::json evaluateUnordered(std::nullptr_t,
-            //                                          std::shared_ptr<Frame> bindings);
 
             std::any evaluate(std::shared_ptr<Parser::Symbol> expr,
                               const std::any &input,
@@ -481,7 +467,7 @@ namespace jsonata
                     return out;
                 }
                 if (j.isObject()) {
-                    std::unordered_map<std::string, std::any> m;
+                    jsonata::ordered_map<std::string, std::any> m;
                     jsonata::copy(j, m, [](const T &el) { return toAny(el); });
                     return m;
                 }
@@ -544,10 +530,10 @@ namespace jsonata
                     jsonata::copy(vec, arr, [](const std::any &a) { return fromAny<T>(a); });
                     return arr;
                 }
-                if (type == typeid(std::unordered_map<std::string, std::any>)) {
+                if (type == typeid(jsonata::ordered_map<std::string, std::any>)) {
                     auto obj = jsonata::backend<T>::object();
                     const auto &map = std::
-                        any_cast<const std::unordered_map<std::string, std::any> &>(
+                        any_cast<const jsonata::ordered_map<std::string, std::any> &>(
                             value);
                     jsonata::copy(map, obj, [](const std::any &a) { return fromAny<T>(a); });
                     return obj;

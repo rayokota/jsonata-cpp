@@ -69,6 +69,16 @@ TEST_F(NullSafetyTest, testSingleNull) {
     EXPECT_EQ(result.get<int>(), 1);
 }
 
+TEST_F(NullSafetyTest, testArrayIndexPreservesNull) {
+    // Indexing into an array element that is JSON null must yield null,
+    // not be filtered out as if it were undefined.
+    auto data = nlohmann::ordered_json::parse(
+        R"({"data": [[1, null, 3], [2, null, 4], [3, null, 5]]})");
+    auto result = Jsonata("[$map(data, function($row) { $row[1] })]").evaluate(data);
+    auto expected = nlohmann::ordered_json::parse("[null, null, null]");
+    EXPECT_EQ(result, expected);
+}
+
 TEST_F(NullSafetyTest, testFilterNullLookup) {
     nlohmann::ordered_json arrayData = nlohmann::ordered_json::array({
         nlohmann::ordered_json::object({{"content", "some"}}),

@@ -1868,6 +1868,9 @@ std::any Jsonata::evaluateFilter(std::shared_ptr<Parser::Symbol> predicate,
         if (inputSequence.tupleStream) {
             results.tupleStream = true;
         }
+    } else if (!input.has_value()) {
+        // undefined input yields undefined output; skip filtering entirely
+        inputSequence = Utils::createSequence();
     } else if (!Utils::isArray(input)) {
         inputSequence = Utils::createSequence(input);
     } else {
@@ -1893,14 +1896,18 @@ std::any Jsonata::evaluateFilter(std::shared_ptr<Parser::Symbol> predicate,
             // ((List)input).get(index) : null;
             if (index >= 0 && index < static_cast<int64_t>(inputSequence.size())) {
                 auto item = inputSequence[index];
-                // Follow Java exactly: only add if item != null
-                if (item.has_value()) {
-                    // Java reference line 505: if(item instanceof List)
-                    if (Utils::isArray(item)) {
-                        results = Utils::arrayify(item);
-                    } else {
-                        results.push_back(item);
-                    }
+                // Preserve JSON null at this index (vs. out-of-bounds, which is
+                // undefined). An empty std::any here means the element was a
+                // JSON null; promote it to NULL_VALUE so downstream
+                // has_value() filtering keeps it.
+                if (!item.has_value()) {
+                    item = Utils::NULL_VALUE;
+                }
+                // Java reference line 505: if(item instanceof List)
+                if (Utils::isArray(item)) {
+                    results = Utils::arrayify(item);
+                } else {
+                    results.push_back(item);
                 }
             }
         } catch (const std::bad_any_cast&) {

@@ -372,11 +372,13 @@ std::unique_ptr<Tokenizer::Token> Tokenizer::next(bool prefix) {
     {
         static const std::regex numregex(
             "^-?(0|([1-9][0-9]*))(\\.[0-9]+)?([Ee][-+]?[0-9]+)?");
-        // Use byte offsets to get iterators into the original string without copying
-        auto byteStart = path_.cbegin() + static_cast<std::string::difference_type>(byte_offsets_[position_]);
-        auto byteEnd = path_.cend();
+        // Use byte offsets to get pointers into the original string without copying.
+        // Use pointer arithmetic on data() rather than dereferencing iterators:
+        // &*path_.cend() dereferences a past-the-end iterator
+        const char* byteStart = path_.data() + byte_offsets_[position_];
+        const char* byteEnd = path_.data() + path_.size();
         std::cmatch match;
-        if (std::regex_search(&*byteStart, &*byteEnd, match, numregex) &&
+        if (std::regex_search(byteStart, byteEnd, match, numregex) &&
             match.position() == 0) {
             std::string numStr = match.str(0);
             double num = std::stod(numStr);

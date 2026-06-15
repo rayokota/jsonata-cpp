@@ -1297,9 +1297,10 @@ Functions::getFunctionRegistry() {
                      if (args.size() < 2 || !isNumber(args[0]) ||
                          !isString(args[1]))
                          return std::any();
-                     // Java: value.longValue() - handle int, long, double types
-                     // properly
-                     int64_t value = Utils::toLong(args[0]);
+                     // Keep the value as a double so magnitudes beyond the
+                     // int64 range (e.g. 1e46) are formatted correctly instead
+                     // of overflowing on narrowing to a 64-bit integer.
+                     double value = Utils::toDouble(args[0]);
                      auto picture = std::any_cast<std::string>(args[1]);
                      auto result = formatInteger(value, picture);
                      return result ? std::any(*result) : std::any();
@@ -4803,7 +4804,7 @@ std::optional<std::string> Functions::dateTimeFromMillis(
 }
 
 std::optional<std::string> Functions::formatInteger(
-    int64_t value, const std::string& picture) {
+    double value, const std::string& picture) {
     // Match Java implementation exactly: return
     // DateTimeUtils.formatInteger(value.longValue(), picture);
     try {

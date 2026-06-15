@@ -55,7 +55,7 @@ namespace utils {
 class DateTimeUtils {
   public:
     // Number to words conversion
-    static std::string numberToWords(int64_t value, bool ordinal = false);
+    static std::string numberToWords(double value, bool ordinal = false);
     static int64_t wordsToNumber(const std::string& text);
     static int64_t wordsToLong(const std::string& text);
 
@@ -68,7 +68,7 @@ class DateTimeUtils {
     static std::string decimalToLetters(int64_t value, const std::string& aChar);
 
     // Integer formatting
-    static std::string formatInteger(int64_t value, const std::string& picture);
+    static std::string formatInteger(double value, const std::string& picture);
 
     // Date/time formatting and parsing
     static std::string formatDateTime(int64_t millis,
@@ -251,8 +251,8 @@ class DateTimeUtils {
         defaultPresentationModifiers;
 
     // Static helper functions
-    static std::string lookup(int64_t num, bool prev, bool ord);
-    static std::string formatInteger(int64_t value, const Format& format);
+    static std::string lookup(double num, bool prev, bool ord);
+    static std::string formatInteger(double value, const Format& format);
     static Format analyseIntegerPicture(const std::string& picture);
     static int64_t getRegularRepeat(
         const std::vector<GroupingSeparator>& separators);

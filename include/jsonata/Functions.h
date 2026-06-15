@@ -160,7 +160,7 @@ class Functions {
     static std::optional<std::string> dateTimeFromMillis(
         int64_t millis, const std::string& picture = "",
         const std::string& timezone = "UTC");
-    static std::optional<std::string> formatInteger(int64_t value,
+    static std::optional<std::string> formatInteger(double value,
                                                     const std::string& picture);
     static std::optional<int64_t> parseInteger(const std::string& value,
                                             const std::string& picture);

@@ -199,17 +199,21 @@ DateTimeUtils::createDefaultPresentationModifiers() {
 }
 
 // Public methods implementation
-std::string DateTimeUtils::numberToWords(int64_t value, bool ordinal) {
+std::string DateTimeUtils::numberToWords(double value, bool ordinal) {
     return lookup(value, false, ordinal);
 }
 
-std::string DateTimeUtils::lookup(int64_t num, bool prev, bool ord) {
+// Operates on double (matching the JSONata JS reference) so that values beyond
+// the int64 range (e.g. $formatInteger(1e46, 'w')) are handled instead of
+// overflowing to a negative/garbage index into the word tables.
+std::string DateTimeUtils::lookup(double num, bool prev, bool ord) {
     std::string words = "";
     if (num <= 19) {
-        words = (prev ? " and " : "") + (ord ? ordinals[num] : few[num]);
+        size_t idx = static_cast<size_t>(num);
+        words = (prev ? " and " : "") + (ord ? ordinals[idx] : few[idx]);
     } else if (num < 100) {
-        int64_t tens = static_cast<int64_t>(num) / 10;
-        int64_t remainder = static_cast<int64_t>(num) % 10;
+        size_t tens = static_cast<size_t>(std::floor(num / 10));
+        int64_t remainder = static_cast<int64_t>(std::fmod(num, 10));
         words = (prev ? " and " : "") + decades[tens - 2];
         if (remainder > 0) {
             words += "-" + lookup(remainder, false, ord);
@@ -217,8 +221,8 @@ std::string DateTimeUtils::lookup(int64_t num, bool prev, bool ord) {
             words = words.substr(0, words.length() - 1) + "ieth";
         }
     } else if (num < 1000) {
-        int64_t hundreds = static_cast<int64_t>(num) / 100;
-        int64_t remainder = static_cast<int64_t>(num) % 100;
+        size_t hundreds = static_cast<size_t>(std::floor(num / 100));
+        double remainder = std::fmod(num, 100);
         words = (prev ? ", " : "") + few[hundreds] + " Hundred";
         if (remainder > 0) {
             words += lookup(remainder, true, ord);
@@ -230,9 +234,15 @@ std::string DateTimeUtils::lookup(int64_t num, bool prev, bool ord) {
         if (mag > static_cast<int64_t>(magnitudes.size())) {
             mag = static_cast<int64_t>(magnitudes.size());  // the largest word
         }
-        int64_t factor = static_cast<int64_t>(std::pow(10, mag * 3));
-        int64_t mant = static_cast<int64_t>(std::floor(num / factor));
-        int64_t remainder = num - mant * factor;
+        double factor = std::pow(10, static_cast<double>(mag * 3));
+        double mant = std::floor(num / factor);
+        // Compute the product in its own statement so it is rounded to a double
+        // before the subtraction. This matches the JS reference's semantics and
+        // prevents the compiler from fusing this into a single full-precision
+        // multiply-add (FMA), which would leave a spurious non-zero remainder
+        // for large magnitudes such as 1e46.
+        double product = mant * factor;
+        double remainder = num - product;
         words = (prev ? ", " : "") + lookup(mant, false, false) + " " +
                 magnitudes[mag - 1];
         if (remainder > 0) {
@@ -399,7 +409,7 @@ int64_t DateTimeUtils::lettersToDecimal(const std::string& letters, char aChar) 
 }
 
 // Basic formatInteger method (simplified for now)
-std::string DateTimeUtils::formatInteger(int64_t value,
+std::string DateTimeUtils::formatInteger(double value,
                                          const std::string& picture) {
     Format format = analyseIntegerPicture(picture);
     return formatInteger(value, format);
@@ -549,10 +559,12 @@ DateTimeUtils::Format DateTimeUtils::analyseIntegerPicture(
     return format;
 }
 
-std::string DateTimeUtils::formatInteger(int64_t value, const Format& format) {
+std::string DateTimeUtils::formatInteger(double value, const Format& format) {
     std::string formattedInteger = "";
+    // Match the JS reference: value = Math.floor(value) before formatting.
+    value = std::floor(value);
     bool negative = value < 0;
-    value = std::abs(value);
+    value = std::fabs(value);
 
     switch (format.primary) {
         case Formats::LETTERS:
@@ -581,7 +593,13 @@ std::string DateTimeUtils::formatInteger(int64_t value, const Format& format) {
             break;
 
         case Formats::DECIMAL: {
-            formattedInteger = std::to_string(value);
+            // value is a non-negative, integral double here; render it as a
+            // plain decimal string (no scientific notation, no fractional part).
+            {
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(0) << value;
+                formattedInteger = oss.str();
+            }
 
             // Pad with zeros if needed
             int64_t padLength = format.mandatoryDigits -

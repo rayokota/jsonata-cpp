@@ -1095,10 +1095,11 @@ Functions::getFunctionRegistry() {
                      if (isString(args[1])) {
                          auto pattern = std::any_cast<std::string>(args[1]);
                          auto* jsonataInstance = Jsonata::getCurrentInstance();
-                         if (!jsonataInstance) return std::any();
+                         RegexEngine engine = jsonataInstance
+                                                  ? jsonataInstance->getRegexEngine()
+                                                  : defaultRegexEngine();
                          try {
-                             auto regexPattern =
-                                 jsonataInstance->getRegexEngine()(pattern, RegexFlags{});
+                             auto regexPattern = engine(pattern, RegexFlags{});
                              auto result = match(str, regexPattern, limit);
                              return std::any(result);
                          } catch (const std::exception&) {
@@ -2801,9 +2802,10 @@ std::optional<std::string> Functions::replace(const std::string& str,
         // safeReplaceFirst repeatedly
         std::string result = str;
         auto* jsonataInstance = Jsonata::getCurrentInstance();
+        RegexEngine engine =
+            jsonataInstance ? jsonataInstance->getRegexEngine() : defaultRegexEngine();
         try {
-            if (!jsonataInstance) throw std::runtime_error("no current instance");
-            auto regex = jsonataInstance->getRegexEngine()(searchStr, RegexFlags{});
+            auto regex = engine(searchStr, RegexFlags{});
             for (int64_t i = 0; i < limit; i++) {
                 result = safeReplaceFirst(result, regex, replaceStr);
             }

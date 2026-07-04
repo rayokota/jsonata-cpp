@@ -30,7 +30,8 @@ class RE2Regex : public jsonata::IRegex {
     RE2Regex(const std::string& pattern, jsonata::RegexFlags flags);
 
     bool test(const std::string& str) const override;
-    std::optional<jsonata::RegexMatch> findFirst(const std::string& str) const override;
+    std::optional<jsonata::RegexMatch> findFirst(const std::string& str,
+                                                 size_t pos) const override;
     std::vector<jsonata::RegexMatch> findAll(const std::string& str) const override;
     std::vector<std::string> split(const std::string& str) const override;
 

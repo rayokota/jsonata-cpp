@@ -121,6 +121,7 @@ std::shared_ptr<IRegex> Tokenizer::scanRegex() {
         int32_t currentChar = charAt(position_);
         if (isClosingSlash(position_)) {
             // end of regex found
+            size_t patternStart = start;
             pattern = substring(start, position_);
             if (pattern.empty()) {
                 throw JException("S0301", static_cast<int64_t>(position_));
@@ -151,7 +152,7 @@ std::shared_ptr<IRegex> Tokenizer::scanRegex() {
             try {
                 return regexEngine_(pattern, regexFlags);
             } catch (const std::exception& e) {
-                throw JException("S0301", static_cast<int64_t>(start), pattern);
+                throw JException("S0301", static_cast<int64_t>(patternStart), pattern);
             }
         }
 

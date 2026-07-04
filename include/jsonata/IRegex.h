@@ -55,8 +55,14 @@ class IRegex {
     // True if the pattern matches anywhere in str. Backs $contains.
     virtual bool test(const std::string& str) const = 0;
 
-    // The first match, if any. Backs $replace's first/limited-match paths.
-    virtual std::optional<RegexMatch> findFirst(const std::string& str) const = 0;
+    // The first match starting the search no earlier than byte offset `pos`.
+    // Backs $replace's first/limited-match paths, and lazy one-at-a-time
+    // iteration when a regex literal is invoked as a function -- callers
+    // that only want the first few matches of a large input should call
+    // this repeatedly (advancing `pos` past each match) rather than use
+    // findAll, which materializes every match up front.
+    virtual std::optional<RegexMatch> findFirst(const std::string& str,
+                                                size_t pos = 0) const = 0;
 
     // All non-overlapping matches, in order. Backs $match and $contains.
     virtual std::vector<RegexMatch> findAll(const std::string& str) const = 0;

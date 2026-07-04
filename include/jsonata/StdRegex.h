@@ -29,7 +29,7 @@ class StdRegex : public IRegex {
     StdRegex(const std::string& pattern, RegexFlags flags);
 
     bool test(const std::string& str) const override;
-    std::optional<RegexMatch> findFirst(const std::string& str) const override;
+    std::optional<RegexMatch> findFirst(const std::string& str, size_t pos) const override;
     std::vector<RegexMatch> findAll(const std::string& str) const override;
     std::vector<std::string> split(const std::string& str) const override;
 

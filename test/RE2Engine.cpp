@@ -68,11 +68,17 @@ bool RE2Regex::test(const std::string& str) const {
     return RE2::PartialMatch(str, re_);
 }
 
-std::optional<RegexMatch> RE2Regex::findFirst(const std::string& str) const {
+std::optional<RegexMatch> RE2Regex::findFirst(const std::string& str, size_t pos) const {
+    if (pos > str.size()) {
+        return std::nullopt;
+    }
     int numGroups = re_.NumberOfCapturingGroups();
     std::vector<re2::StringPiece> submatch(numGroups + 1);
     re2::StringPiece input(str);
-    if (!re_.Match(input, 0, str.size(), RE2::UNANCHORED, submatch.data(),
+    // RE2::Match takes startpos against the full `input`, so ^ still only
+    // matches true position 0 -- no special anchoring flags needed, unlike
+    // std::regex when searching a sub-range.
+    if (!re_.Match(input, pos, str.size(), RE2::UNANCHORED, submatch.data(),
                    numGroups + 1)) {
         return std::nullopt;
     }
@@ -81,20 +87,11 @@ std::optional<RegexMatch> RE2Regex::findFirst(const std::string& str) const {
 
 std::vector<RegexMatch> RE2Regex::findAll(const std::string& str) const {
     std::vector<RegexMatch> results;
-    int numGroups = re_.NumberOfCapturingGroups();
-    std::vector<re2::StringPiece> submatch(numGroups + 1);
-    re2::StringPiece input(str);
-
-    size_t startpos = 0;
-    while (startpos <= str.size()) {
-        if (!re_.Match(input, startpos, str.size(), RE2::UNANCHORED,
-                       submatch.data(), numGroups + 1)) {
-            break;
-        }
-        RegexMatch match = toRegexMatch(input, submatch, numGroups);
+    size_t pos = 0;
+    while (auto match = findFirst(str, pos)) {
         // Guard against zero-length matches to avoid an infinite loop.
-        startpos = match.position + (match.length == 0 ? 1 : match.length);
-        results.push_back(std::move(match));
+        pos = match->position + (match->length == 0 ? 1 : match->length);
+        results.push_back(std::move(*match));
     }
     return results;
 }

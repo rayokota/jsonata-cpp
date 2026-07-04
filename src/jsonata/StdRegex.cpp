@@ -57,12 +57,26 @@ bool StdRegex::test(const std::string& str) const {
     return std::regex_search(str, regex_);
 }
 
-std::optional<RegexMatch> StdRegex::findFirst(const std::string& str) const {
-    std::smatch m;
-    if (!std::regex_search(str, m, regex_)) {
+std::optional<RegexMatch> StdRegex::findFirst(const std::string& str, size_t pos) const {
+    if (pos > str.size()) {
         return std::nullopt;
     }
-    return toRegexMatch(m);
+    std::smatch m;
+    auto begin = str.cbegin() + static_cast<std::string::difference_type>(pos);
+    // When resuming from a non-zero offset, tell std::regex there is a real
+    // preceding character (match_prev_avail) and that `begin` isn't the true
+    // start of input (match_not_bol), so ^ and word-boundary constructs are
+    // evaluated relative to the whole string, not to `pos` -- matching what
+    // std::sregex_iterator does internally between successive matches.
+    auto flags = pos == 0 ? std::regex_constants::match_default
+                          : std::regex_constants::match_not_bol |
+                                std::regex_constants::match_prev_avail;
+    if (!std::regex_search(begin, str.cend(), m, regex_, flags)) {
+        return std::nullopt;
+    }
+    RegexMatch result = toRegexMatch(m);
+    result.position += pos;
+    return result;
 }
 
 std::vector<RegexMatch> StdRegex::findAll(const std::string& str) const {

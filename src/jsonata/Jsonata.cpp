@@ -2430,7 +2430,7 @@ Jsonata::Jsonata(const std::string& jsonataExpression, RegexEngine regexEngine)
     expression_ = parser.parse(jsonataExpression, false, regexEngine_);
 }
 
-Jsonata::Jsonata(const Jsonata& other) {
+Jsonata::Jsonata(const Jsonata& other) : regexEngine_(other.regexEngine_) {
     // Copy constructor matching Java implementation: Jsonata(Jsonata other)
     // this.ast = other.ast;
     // this.environment = other.environment;
@@ -2438,7 +2438,6 @@ Jsonata::Jsonata(const Jsonata& other) {
     expression_ = other.expression_;
     environment_ = other.environment_;
     timestamp_ = other.timestamp_;
-    regexEngine_ = other.regexEngine_;
 }
 
 nlohmann::ordered_json Jsonata::evaluate(const nlohmann::ordered_json& input) {
@@ -2657,20 +2656,24 @@ std::any Jsonata::apply(const std::any& proc, const Utils::JList& args,
 
 struct RegexState {
     std::shared_ptr<std::string> str;
-    std::vector<RegexMatch> matches;
-    size_t index = 0;
+    std::shared_ptr<IRegex> regex;
+    size_t pos = 0;
 };
 
 static std::any regexClosure(std::shared_ptr<RegexState> state) {
-    if (state->index >= state->matches.size()) return std::any{};
-    const RegexMatch& match = state->matches[state->index];
-    ++(state->index);
+    // Searches lazily, one match at a time, from state->pos -- unlike
+    // IRegex::findAll, this never scans further into the string than the
+    // caller actually consumes via .next().
+    auto match = state->regex->findFirst(*state->str, state->pos);
+    if (!match) return std::any{};
+    state->pos = match->position + (match->length == 0 ? 1 : match->length);
+
     nlohmann::ordered_map<std::string, std::any> result;
-    result["match"] = match.text;
-    result["start"] = static_cast<long long>(match.position);
-    result["end"] = static_cast<long long>(match.position + match.length);
+    result["match"] = match->text;
+    result["start"] = static_cast<long long>(match->position);
+    result["end"] = static_cast<long long>(match->position + match->length);
     Utils::JList groups;
-    groups.push_back(match.text);
+    groups.push_back(match->text);
     result["groups"] = std::any(groups);
     JFunction nextFn;
     nextFn.implementation = [state](const Utils::JList&, const std::any&, std::shared_ptr<Frame>) -> std::any {
@@ -2712,7 +2715,7 @@ std::any Jsonata::applyInner(const std::any& proc, const Utils::JList& args,
                 if (arg.has_value() && arg.type() == typeid(std::string)) {
                     auto state = std::make_shared<RegexState>();
                     state->str = std::make_shared<std::string>(std::any_cast<std::string>(arg));
-                    state->matches = regex->findAll(*state->str);
+                    state->regex = regex;
                     results.push_back(regexClosure(state));
                 }
             }

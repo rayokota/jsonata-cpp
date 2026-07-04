@@ -2680,10 +2680,12 @@ bool Functions::contains(const std::string& str, const std::any& token) {
         else if (token.type() == typeid(std::shared_ptr<IRegex>)) {
             auto regex = std::any_cast<std::shared_ptr<IRegex>>(token);
             // Java lines 697-701: var matches = evaluateMatcher((Pattern)token,
-            // str); result = !matches.isEmpty();
+            // str); result = !matches.isEmpty(); (IRegex::test is equivalent,
+            // without materializing the match list)
             return regex->test(str);
         }
-        // Check if it's a regex object (stored as map with "type" = "regex")
+        // Fallback: token is neither a string nor a regex; stringify it and
+        // do a literal substring search.
         else {
             // Java line 703: else throw new Error("unknown type to match:
             // "+token); For C++, fall back to string conversion as fallback
@@ -5224,19 +5226,22 @@ std::string Functions::safeReplaceAll(const std::string& str,
     result.reserve(str.size());
     std::string prepared = safeReplacement(replacement);
 
+    // Stream matches one at a time via findFirst rather than materializing
+    // all of them up front with findAll -- avoids holding every match in
+    // memory simultaneously for inputs with many matches.
     size_t lastEnd = 0;
-    for (const auto& m : pattern->findAll(str)) {
+    while (auto m = pattern->findFirst(str, lastEnd)) {
         // Guard against zero-length matches to avoid infinite loops
-        if (m.length == 0) {
+        if (m->length == 0) {
             // Append the remainder and stop (aligns with override behavior)
             result.append(str.substr(lastEnd));
             return result;
         }
 
         // Text before match
-        result.append(str.substr(lastEnd, m.position - lastEnd));
-        result += expandReplacement(prepared, m);
-        lastEnd = m.position + m.length;
+        result.append(str.substr(lastEnd, m->position - lastEnd));
+        result += expandReplacement(prepared, *m);
+        lastEnd = m->position + m->length;
     }
 
     // Trailing remainder
@@ -5270,10 +5275,20 @@ std::string Functions::safeReplaceAllFn(const std::string& str,
                                         const std::shared_ptr<IRegex>& pattern,
                                         const std::any& func) {
     // Following Java implementation: Functions.java lines 844-859
+    // Stream matches one at a time via findFirst rather than materializing
+    // all of them up front with findAll.
     size_t lastPos = 0;
+    size_t searchPos = 0;
     std::string finalResult;
 
-    for (const auto& match : pattern->findAll(str)) {
+    while (auto matchOpt = pattern->findFirst(str, searchPos)) {
+        const RegexMatch& match = *matchOpt;
+        // Advance the search position past zero-length matches (matching
+        // IRegex::findAll's own behavior) so we don't loop forever
+        // re-finding the same empty match; `lastPos` (output bookkeeping)
+        // is left as-is for a zero-length match, unchanged from before.
+        searchPos = match.position + (match.length == 0 ? 1 : match.length);
+
         try {
             // Convert match to Jsonata format (equivalent to Java's
             // toJsonataMatch)

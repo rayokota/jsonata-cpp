@@ -134,9 +134,9 @@ std::string Signature::checkObjectType(const std::any &value) {
         std::any_cast<nlohmann::ordered_map<std::string, std::any>>(value);
         return "o";
     } catch (const std::bad_any_cast &) {
-        // Try shared_ptr<map> - check if it's a regex object
+        // Check if it's a regex object
         try {
-            auto regex = std::any_cast<std::shared_ptr<IRegex>>(value);
+            std::any_cast<std::shared_ptr<IRegex>>(value);
             return "f";
         } catch (const std::bad_any_cast &) {
             return "";

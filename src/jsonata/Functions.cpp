@@ -5178,14 +5178,13 @@ std::string Functions::expandReplacement(const std::string& repl,
             // digits are [i+1, j)
             int64_t chosenIdx = -1;
             size_t chosenLen = 0;
-            for (size_t k = (j - (i + 1)); k >= 1; --k) {
+            for (size_t k = (j - (i + 1)); k > 0; --k) {
                 int64_t idx = std::stoi(repl.substr(i + 1, k));
                 if (idx <= maxIndex && idx >= 0) {
                     chosenIdx = idx;
                     chosenLen = k;
                     break;
                 }
-                if (k == 1) break;  // prevent underflow of size_t
             }
             if (chosenIdx >= 0) {
                 out += chosenIdx == 0 ? match.text

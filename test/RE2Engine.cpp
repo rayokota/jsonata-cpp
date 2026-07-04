@@ -18,6 +18,7 @@
 #include "RE2Engine.h"
 
 #include <stdexcept>
+#include <utility>
 
 using jsonata::IRegex;
 using jsonata::RegexEngine;

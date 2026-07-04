@@ -175,6 +175,41 @@ TEST_F(StringTest, evalTest) {
     EXPECT_EQ(result.get<std::string>(), "AAA");
 }
 
+TEST_F(StringTest, evalSeesEnclosingVariableBindingTest) {
+    // $eval's dynamically-parsed expression must see variables bound in
+    // the enclosing scope (here, via an in-expression := assignment), not
+    // just a static top-level environment (regression test).
+    Jsonata expr("($x := 5; $eval(\"$x + 1\"))");
+    auto result = expr.evaluate(nullptr);
+    ASSERT_TRUE(result.is_number());
+    EXPECT_EQ(result.get<int64_t>(), 6);
+}
+
+TEST_F(StringTest, evalSeesExplicitTopLevelBindingsTest) {
+    // Same as above, but for bindings passed via evaluate()'s bindings
+    // argument rather than an in-expression assignment.
+    Jsonata expr("$eval(\"$x\")");
+    auto bindingFrame = expr.createFrame();
+    bindingFrame->bind("x", int64_t(42));
+    auto result = expr.evaluate(nullptr, bindingFrame);
+    ASSERT_TRUE(result.is_number());
+    EXPECT_EQ(result.get<int64_t>(), 42);
+}
+
+TEST_F(StringTest, evalUnaffectedBySiblingArgumentScopeTest) {
+    // $eval's second (focus) argument is evaluated before its own body
+    // runs, and here contains a nested block with its own environment.
+    // Confirms evaluating that sibling argument doesn't leave the tracked
+    // "current" environment pointing at the inner block's scope, which
+    // would otherwise cause $eval to resolve $x (from the outer scope) as
+    // undefined instead of 5. (jsonata-python had this bug; jsonata-cpp
+    // does not, verified as a regression test.)
+    Jsonata expr("($x := 5; $eval(\"$x\", (($y := 1; $y))))");
+    auto result = expr.evaluate(nullptr);
+    ASSERT_TRUE(result.is_number());
+    EXPECT_EQ(result.get<int64_t>(), 5);
+}
+
 TEST_F(StringTest, regexTest) {
     auto input = makeObject({{"foo", 1}, {"bar", 2}});
     auto result = Jsonata("($matcher := $eval('/^' & 'foo' & '/i'); $.$spread()[$.$keys() ~> $matcher])").evaluate(input);

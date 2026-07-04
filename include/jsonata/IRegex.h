@@ -64,7 +64,7 @@ class IRegex {
     virtual std::optional<RegexMatch> findFirst(const std::string& str,
                                                 size_t pos = 0) const = 0;
 
-    // All non-overlapping matches, in order. Backs $match and $contains.
+    // All non-overlapping matches, in order. Backs $match.
     virtual std::vector<RegexMatch> findAll(const std::string& str) const = 0;
 
     // Splits str on every match, returning the segments between matches

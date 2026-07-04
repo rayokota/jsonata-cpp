@@ -5179,7 +5179,14 @@ std::string Functions::expandReplacement(const std::string& repl,
             int64_t chosenIdx = -1;
             size_t chosenLen = 0;
             for (size_t k = (j - (i + 1)); k > 0; --k) {
-                int64_t idx = std::stoi(repl.substr(i + 1, k));
+                int64_t idx;
+                try {
+                    idx = std::stoll(repl.substr(i + 1, k));
+                } catch (const std::exception&) {
+                    // Too large to represent (e.g. "$999999999999999999999");
+                    // treat like any other out-of-range group reference.
+                    idx = -1;
+                }
                 if (idx <= maxIndex && idx >= 0) {
                     chosenIdx = idx;
                     chosenLen = k;

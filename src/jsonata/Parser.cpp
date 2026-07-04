@@ -1308,10 +1308,11 @@ void Parser::registerSymbol(std::shared_ptr<Symbol> symbol) {
 }
 
 std::shared_ptr<Parser::Symbol> Parser::parse(const std::string& source,
-                                              bool recover) {
+                                              bool recover,
+                                              RegexEngine regexEngine) {
     source_ = source;
     recover_ = recover;
-    lexer_ = std::make_unique<Tokenizer>(source);
+    lexer_ = std::make_unique<Tokenizer>(source, regexEngine);
 
     // Start parsing (Java: advance() defaults to prefix=false)
     advance("");

@@ -118,7 +118,7 @@ void Frame::setEvaluateExitCallback(ExitCallback callback) {
 }
 
 // Jsonata implementation
-Jsonata::Jsonata() {
+Jsonata::Jsonata(RegexEngine regexEngine) : regexEngine_(regexEngine) {
     parser_ = std::make_unique<Parser>();
     currentInstance_ = this;
     // Initialize environment like Java does: environment =
@@ -137,14 +137,14 @@ std::shared_ptr<Frame> Jsonata::createFrame(
     return std::make_shared<Frame>(enclosingEnvironment);
 }
 
-Jsonata Jsonata::jsonata(const std::string& expression) {
-    Jsonata instance(expression);
+Jsonata Jsonata::jsonata(const std::string& expression, RegexEngine regexEngine) {
+    Jsonata instance(expression, regexEngine);
     // Parse and store the expression
     return instance;
 }
 
 std::shared_ptr<Parser::Symbol> Jsonata::parse(const std::string& expression) {
-    return parser_->parse(expression);
+    return parser_->parse(expression, false, regexEngine_);
 }
 
 std::any Jsonata::evaluate(std::shared_ptr<Parser::Symbol> expr,
@@ -690,8 +690,8 @@ std::any Jsonata::evaluateRegex(std::shared_ptr<Parser::Symbol> expr,
     }
 
     try {
-        // The tokenizer stores std::regex objects in the value
-        return std::any_cast<std::regex>(expr->value);
+        // The tokenizer stores compiled IRegex objects in the value
+        return std::any_cast<std::shared_ptr<IRegex>>(expr->value);
     } catch (const std::bad_any_cast&) {
         throw JException("T0410", expr->position, "Invalid regex value");
     }
@@ -2418,7 +2418,8 @@ Jsonata* Jsonata::getPerThreadInstance() {
     tls_environment_.reset();
 }
 
-Jsonata::Jsonata(const std::string& jsonataExpression) {
+Jsonata::Jsonata(const std::string& jsonataExpression, RegexEngine regexEngine)
+    : regexEngine_(regexEngine) {
     currentInstance_ = this;
     // Initialize environment like Java does: environment =
     // createFrame(staticFrame)
@@ -2426,7 +2427,7 @@ Jsonata::Jsonata(const std::string& jsonataExpression) {
 
     // Parse the expression
     Parser parser;
-    expression_ = parser.parse(jsonataExpression);
+    expression_ = parser.parse(jsonataExpression, false, regexEngine_);
 }
 
 Jsonata::Jsonata(const Jsonata& other) {
@@ -2437,6 +2438,7 @@ Jsonata::Jsonata(const Jsonata& other) {
     expression_ = other.expression_;
     environment_ = other.environment_;
     timestamp_ = other.timestamp_;
+    regexEngine_ = other.regexEngine_;
 }
 
 nlohmann::ordered_json Jsonata::evaluate(const nlohmann::ordered_json& input) {
@@ -2655,21 +2657,20 @@ std::any Jsonata::apply(const std::any& proc, const Utils::JList& args,
 
 struct RegexState {
     std::shared_ptr<std::string> str;
-    std::shared_ptr<std::regex> regex;
-    std::sregex_iterator it;
-    std::sregex_iterator end;
+    std::vector<RegexMatch> matches;
+    size_t index = 0;
 };
 
 static std::any regexClosure(std::shared_ptr<RegexState> state) {
-    if (state->it == state->end) return std::any{};
-    auto match = *state->it;
-    ++(state->it);
+    if (state->index >= state->matches.size()) return std::any{};
+    const RegexMatch& match = state->matches[state->index];
+    ++(state->index);
     nlohmann::ordered_map<std::string, std::any> result;
-    result["match"] = std::string(match.str());
-    result["start"] = static_cast<long long>(match.position());
-    result["end"] = static_cast<long long>(match.position() + match.length());
+    result["match"] = match.text;
+    result["start"] = static_cast<long long>(match.position);
+    result["end"] = static_cast<long long>(match.position + match.length);
     Utils::JList groups;
-    groups.push_back(std::string(match.str()));
+    groups.push_back(match.text);
     result["groups"] = std::any(groups);
     JFunction nextFn;
     nextFn.implementation = [state](const Utils::JList&, const std::any&, std::shared_ptr<Frame>) -> std::any {
@@ -2703,17 +2704,15 @@ std::any Jsonata::applyInner(const std::any& proc, const Utils::JList& args,
 
         // Check if it's a regex pattern (Java lines 1757-1766)
         // Java: } else if (proc instanceof Pattern) {
-        if (proc.type() == typeid(std::regex)) {
-            auto regex = std::any_cast<std::regex>(proc);
+        if (proc.type() == typeid(std::shared_ptr<IRegex>)) {
+            auto regex = std::any_cast<std::shared_ptr<IRegex>>(proc);
             Utils::JList results;
 
             for (const auto& arg : validatedArgs) {
                 if (arg.has_value() && arg.type() == typeid(std::string)) {
                     auto state = std::make_shared<RegexState>();
                     state->str = std::make_shared<std::string>(std::any_cast<std::string>(arg));
-                    state->regex = std::make_shared<std::regex>(regex);
-                    state->it = std::sregex_iterator(state->str->begin(), state->str->end(), *state->regex);
-                    state->end = std::sregex_iterator();
+                    state->matches = regex->findAll(*state->str);
                     results.push_back(regexClosure(state));
                 }
             }
@@ -3743,7 +3742,7 @@ bool Jsonata::isFunctionLike(const std::any& o) const {
     }
 
     // Check if it's a regex pattern (C++ equivalent of "o instanceof Pattern")
-    if (o.has_value() && o.type() == typeid(std::regex)) {
+    if (o.has_value() && o.type() == typeid(std::shared_ptr<IRegex>)) {
         return true;
     }
 

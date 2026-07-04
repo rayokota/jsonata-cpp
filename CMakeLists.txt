@@ -201,6 +201,45 @@ if(JSONATA_BUILD_TESTS)
             endif()
         endif()
     endif()
+
+    # Optional: demonstrates that jsonata-cpp's pluggable regex engine
+    # (IRegex, see include/jsonata/IRegex.h) can be backed by Google's RE2
+    # instead of std::regex. Off by default. RE2 must already be available
+    # via find_package (e.g. installed through vcpkg/conan/brew) -- it is
+    # not fetched automatically like nlohmann_json, since current RE2
+    # releases also require Abseil, making a FetchContent fallback a much
+    # heavier addition than an optional test warrants.
+    option(JSONATA_BUILD_RE2_TEST "Build the optional RE2 regex engine test (requires re2 to be installed)" OFF)
+
+    if(JSONATA_BUILD_RE2_TEST)
+        find_package(re2 CONFIG REQUIRED)
+
+        add_executable(jsonata_re2_test test/RE2Engine.cpp test/RE2EngineTest.cpp)
+        target_link_libraries(jsonata_re2_test
+            jsonata
+            re2::re2
+            gtest_main
+            gtest
+            Threads::Threads
+        )
+        # re2::re2 pulls in Abseil, and Abseil's ABI (e.g. absl::string_view's
+        # layout) depends on which copy of its headers get resolved first.
+        # Other PUBLIC dependencies (e.g. a system-wide nlohmann_json found
+        # via find_package) can inject unrelated include directories that
+        # happen to also contain a differently-configured Abseil, silently
+        # shadowing the one re2 was actually built against and causing link
+        # errors. Force re2/Abseil's own include dirs to be searched first.
+        target_include_directories(jsonata_re2_test BEFORE PRIVATE
+            $<TARGET_PROPERTY:re2::re2,INTERFACE_INCLUDE_DIRECTORIES>
+        )
+
+        if(TARGET gtest)
+            include(GoogleTest)
+            gtest_discover_tests(jsonata_re2_test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+        endif()
+    endif()
 endif()
 
 # Installation rules

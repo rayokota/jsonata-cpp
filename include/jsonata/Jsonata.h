@@ -34,6 +34,7 @@
 #include <string>
 #include <vector>
 
+#include "jsonata/IRegex.h"
 #include "jsonata/Parser.h"
 
 // Forward declarations
@@ -124,8 +125,9 @@ class JFunction {
 class Jsonata {
   public:
     // Constructors
-    Jsonata();
-    Jsonata(const std::string& jsonataExpression);
+    explicit Jsonata(RegexEngine regexEngine = defaultRegexEngine());
+    Jsonata(const std::string& jsonataExpression,
+           RegexEngine regexEngine = defaultRegexEngine());
     Jsonata(const Jsonata& other);  // Copy constructor for per-thread instances
 
     // Main evaluation methods (ordered JSON variants)
@@ -150,8 +152,13 @@ class Jsonata {
     // Environment access
     std::shared_ptr<Frame> getEnvironment() const;
 
+    // Regex engine used to compile JSONata regex literals and dynamic
+    // string patterns (e.g. for $match/$replace/$split).
+    RegexEngine getRegexEngine() const { return regexEngine_; }
+
     // Factory methods
-    static Jsonata jsonata(const std::string& expression);
+    static Jsonata jsonata(const std::string& expression,
+                          RegexEngine regexEngine = defaultRegexEngine());
 
     // Instance methods (matching Java reference)
     std::shared_ptr<Frame> createFrame();
@@ -193,6 +200,7 @@ class Jsonata {
     static void clearPerThreadInstance();
 
     std::shared_ptr<Frame> environment_;
+    RegexEngine regexEngine_ = defaultRegexEngine();
     static thread_local std::shared_ptr<class Parser> currentParser_;
     static thread_local std::any tls_input_;
     static thread_local std::shared_ptr<Frame> tls_environment_;

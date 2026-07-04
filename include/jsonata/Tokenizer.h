@@ -32,6 +32,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "jsonata/IRegex.h"
+
 namespace jsonata {
 
 class Tokenizer {
@@ -63,10 +65,12 @@ class Tokenizer {
     size_t position_;
     size_t length_;
     int64_t depth_;
+    RegexEngine regexEngine_;
 
   public:
     // Constructor
-    explicit Tokenizer(const std::string& path);
+    explicit Tokenizer(const std::string& path,
+                       RegexEngine regexEngine = defaultRegexEngine());
 
     // Main tokenization method
     std::unique_ptr<Token> next(bool prefix = false);
@@ -80,7 +84,7 @@ class Tokenizer {
     std::unique_ptr<Token> create(const std::string& type,
                                   const std::any& value);
     bool isClosingSlash(size_t position) const;
-    std::regex scanRegex();
+    std::shared_ptr<IRegex> scanRegex();
 
     // Codepoint access methods (like Java charAt)
     int32_t charAt(size_t index) const;

@@ -136,7 +136,7 @@ std::string Signature::checkObjectType(const std::any &value) {
     } catch (const std::bad_any_cast &) {
         // Try shared_ptr<map> - check if it's a regex object
         try {
-            auto regex = std::any_cast<std::regex>(value);
+            auto regex = std::any_cast<std::shared_ptr<IRegex>>(value);
             return "f";
         } catch (const std::bad_any_cast &) {
             return "";

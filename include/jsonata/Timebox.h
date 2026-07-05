@@ -21,6 +21,7 @@
 #include <any>
 #include <chrono>
 #include <functional>
+#include <optional>
 
 namespace jsonata {
 
@@ -33,8 +34,8 @@ class Frame;
  */
 class Timebox {
   private:
-    int64_t timeout_;  // timeout in milliseconds (default: 5000ms)
-    int64_t maxDepth_;  // max recursion depth (default: 100)
+    std::optional<int64_t> timeout_;   // timeout in milliseconds (unset: no limit)
+    std::optional<int64_t> maxDepth_;  // max recursion depth (unset: no limit)
 
     std::chrono::steady_clock::time_point startTime_;
     int64_t depth_;
@@ -50,13 +51,15 @@ class Timebox {
 
     /**
      * Protect the process from a runaway expression
-     * with custom timeout and max depth
+     * with custom timeout and/or max depth. Either bound may be left unset
+     * (std::nullopt) to leave that guardrail disabled.
      */
-    Timebox(Frame& expr, int64_t timeout, int64_t maxDepth);
+    Timebox(Frame& expr, std::optional<int64_t> timeout,
+            std::optional<int64_t> maxDepth);
 
     // Getters
-    int64_t getTimeout() const { return timeout_; }
-    int64_t getMaxDepth() const { return maxDepth_; }
+    std::optional<int64_t> getTimeout() const { return timeout_; }
+    std::optional<int64_t> getMaxDepth() const { return maxDepth_; }
     int64_t getCurrentDepth() const { return depth_; }
 
     // Runtime check method

@@ -210,6 +210,67 @@ TEST_F(StringTest, evalUnaffectedBySiblingArgumentScopeTest) {
     EXPECT_EQ(result.get<int64_t>(), 5);
 }
 
+TEST_F(StringTest, stackGuardrailStopsNonTailRecursionTest) {
+    // Ackermann is not tail-recursive, so its eval-apply depth grows with
+    // each call. A small `stack` bound should trip before it completes.
+    std::string ackExpr =
+        "($ack := function($m, $n) { $m = 0 ? $n + 1 : ($n = 0 ? "
+        "$ack($m - 1, 1) : $ack($m - 1, $ack($m, $n - 1))) }; $ack(4, 3))";
+    Jsonata expr(ackExpr, defaultRegexEngine(), std::nullopt, 50);
+    try {
+        expr.evaluate(nullptr);
+        FAIL() << "Expected JException D1011";
+    } catch (const JException& e) {
+        EXPECT_EQ(e.getError(), "D1011");
+    }
+}
+
+TEST_F(StringTest, stackGuardrailAllowsBoundedRecursionTest) {
+    // A stack bound that's high enough for the actual recursion depth
+    // should not interfere with a normal, terminating evaluation.
+    std::string ackExpr =
+        "($ack := function($m, $n) { $m = 0 ? $n + 1 : ($n = 0 ? "
+        "$ack($m - 1, 1) : $ack($m - 1, $ack($m, $n - 1))) }; $ack(3, 4))";
+    Jsonata expr(ackExpr, defaultRegexEngine(), std::nullopt, 1000);
+    auto result = expr.evaluate(nullptr);
+    ASSERT_TRUE(result.is_number());
+    EXPECT_EQ(result.get<int64_t>(), 125);
+}
+
+TEST_F(StringTest, timeoutGuardrailStopsInfiniteTailRecursionTest) {
+    // Tail recursion doesn't grow the eval-apply depth, so only the
+    // `timeout` guardrail (not `stack`) can catch this infinite loop.
+    Jsonata expr("($f := function($n) { $f($n + 1) }; $f(0))",
+                defaultRegexEngine(), 100, std::nullopt);
+    try {
+        expr.evaluate(nullptr);
+        FAIL() << "Expected JException D1012";
+    } catch (const JException& e) {
+        EXPECT_EQ(e.getError(), "D1012");
+    }
+}
+
+TEST_F(StringTest, stackGuardrailPropagatesThroughEvalTest) {
+    // $eval() reuses the enclosing instance's environment directly, so a
+    // `stack` bound configured on the outer expression must also apply to
+    // dynamically-evaluated code (regression test for guardrail bypass).
+    std::string ackExpr =
+        "($ack := function($m, $n) { $m = 0 ? $n + 1 : ($n = 0 ? "
+        "$ack($m - 1, 1) : $ack($m - 1, $ack($m, $n - 1))) }; "
+        "$ack(4, 3))";
+    Jsonata expr("$eval(\"" + ackExpr + "\")", defaultRegexEngine(),
+                std::nullopt, 50);
+    // Unlike jsonata-java (which wraps every $eval-time error, guardrail or
+    // not, into a generic D3121), jsonata-cpp's functionEval re-throws
+    // JException as-is, so the original D1011 code survives here.
+    try {
+        expr.evaluate(nullptr);
+        FAIL() << "Expected JException D1011";
+    } catch (const JException& e) {
+        EXPECT_EQ(e.getError(), "D1011");
+    }
+}
+
 TEST_F(StringTest, regexTest) {
     auto input = makeObject({{"foo", 1}, {"bar", 2}});
     auto result = Jsonata("($matcher := $eval('/^' & 'foo' & '/i'); $.$spread()[$.$keys() ~> $matcher])").evaluate(input);

@@ -66,8 +66,8 @@ class Frame {
     std::shared_ptr<Frame> parent_;
     nlohmann::ordered_map<std::string, std::any> bindings_;
     std::chrono::time_point<std::chrono::steady_clock> timestamp_;
-    int64_t timeout_;
-    int64_t recursionDepth_;
+    std::optional<int64_t> timeout_;
+    std::optional<int64_t> recursionDepth_;
     EntryCallback entryCallback_;
     ExitCallback exitCallback_;
     std::unique_ptr<class Timebox> timebox_;
@@ -84,8 +84,10 @@ class Frame {
     void bind(const std::string& name, const std::any& value);
     std::any lookup(const std::string& name) const;
 
-    // Runtime bounds
-    void setRuntimeBounds(int64_t timeout, int64_t maxRecursionDepth);
+    // Runtime bounds. Either bound may be left unset (std::nullopt) to leave
+    // that guardrail disabled.
+    void setRuntimeBounds(std::optional<int64_t> timeout,
+                          std::optional<int64_t> maxRecursionDepth);
 
     // Evaluation callbacks
     void setEvaluateEntryCallback(EntryCallback callback);
@@ -125,9 +127,18 @@ class JFunction {
 class Jsonata {
   public:
     // Constructors
-    explicit Jsonata(RegexEngine regexEngine = defaultRegexEngine());
+    //
+    // timeout/stack configure the optional evaluation guardrails (D1012/D1011):
+    // timeout is a wall-clock limit in milliseconds, stack limits the depth of
+    // the eval-apply cycle. Either may be left unset (std::nullopt) to leave
+    // that guardrail disabled.
+    explicit Jsonata(RegexEngine regexEngine = defaultRegexEngine(),
+                     std::optional<int64_t> timeout = std::nullopt,
+                     std::optional<int64_t> stack = std::nullopt);
     Jsonata(const std::string& jsonataExpression,
-           RegexEngine regexEngine = defaultRegexEngine());
+           RegexEngine regexEngine = defaultRegexEngine(),
+           std::optional<int64_t> timeout = std::nullopt,
+           std::optional<int64_t> stack = std::nullopt);
     Jsonata(const Jsonata& other);  // Copy constructor for per-thread instances
 
     // Main evaluation methods (ordered JSON variants)
@@ -158,7 +169,9 @@ class Jsonata {
 
     // Factory methods
     static Jsonata jsonata(const std::string& expression,
-                          RegexEngine regexEngine = defaultRegexEngine());
+                          RegexEngine regexEngine = defaultRegexEngine(),
+                          std::optional<int64_t> timeout = std::nullopt,
+                          std::optional<int64_t> stack = std::nullopt);
 
     // Instance methods (matching Java reference)
     std::shared_ptr<Frame> createFrame();

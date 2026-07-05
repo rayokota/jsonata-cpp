@@ -18,8 +18,6 @@
  */
 #include "jsonata/Timebox.h"
 
-#include <sstream>
-
 #include "jsonata/JException.h"
 #include "jsonata/Jsonata.h"
 #include "jsonata/Parser.h"
@@ -28,7 +26,8 @@ namespace jsonata {
 
 Timebox::Timebox(Frame& expr) : Timebox(expr, 5000L, 100) {}
 
-Timebox::Timebox(Frame& expr, int64_t timeout, int64_t maxDepth)
+Timebox::Timebox(Frame& expr, std::optional<int64_t> timeout,
+                 std::optional<int64_t> maxDepth)
     : timeout_(timeout), maxDepth_(maxDepth), depth_(0) {
     startTime_ = std::chrono::steady_clock::now();
     initialize(expr);
@@ -72,26 +71,21 @@ void Timebox::onEvaluateExit() {
 }
 
 void Timebox::checkRunnaway() {
-    // Check stack depth (Java reference: Timebox.java lines 64-70)
-    if (depth_ > maxDepth_) {
-        std::ostringstream oss;
-        oss << "Stack overflow error: Check for non-terminating recursive "
-               "function. "
-            << "Consider rewriting as tail-recursive. Depth=" << depth_
-            << " max=" << maxDepth_;
-        // Java reference expects "U1001" error code for recursion limit
-        throw JException("U1001", -1);
+    // Check stack depth
+    if (maxDepth_.has_value() && depth_ > *maxDepth_) {
+        throw JException("D1011", -1);
     }
 
-    // Check timeout (Java reference: Timebox.java lines 71-78)
-    auto currentTime = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                       currentTime - startTime_)
-                       .count();
+    // Check timeout
+    if (timeout_.has_value()) {
+        auto currentTime = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           currentTime - startTime_)
+                           .count();
 
-    if (elapsed > timeout_) {
-        // Java reference expects "U1001" error code for timeout as well
-        throw JException("U1001", -1);
+        if (elapsed > *timeout_) {
+            throw JException("D1012", -1, *timeout_);
+        }
     }
 }
 

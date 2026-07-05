@@ -4938,8 +4938,11 @@ std::any Functions::functionEval(const std::string& expr,
         // that doesn't get overwritten)
         auto savedInstance = Jsonata::getCurrentInstance();
 
-        // This creates NEW instance just to parse the expression
-        Jsonata astInstance(expr);
+        // This creates NEW instance just to parse the expression. Use the
+        // enclosing instance's regex engine so regex literals inside the
+        // eval'd expression are compiled consistently with the rest of the
+        // enclosing expression (e.g. RE2 instead of std::regex).
+        Jsonata astInstance(expr, currentInstance->getRegexEngine());
         auto expressionAst = astInstance.getExpression();
 
         // Restore the original current instance immediately after parsing

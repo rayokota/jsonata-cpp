@@ -75,12 +75,12 @@ void Jsonata::initializeBuiltinFunctions(std::shared_ptr<Frame> frame) {
 }
 
 // Frame implementation
-Frame::Frame() : parent_(nullptr), timeout_(0), recursionDepth_(0) {
+Frame::Frame() : parent_(nullptr) {
     timestamp_ = std::chrono::steady_clock::now();
 }
 
 Frame::Frame(std::shared_ptr<Frame> enclosingEnvironment)
-    : parent_(enclosingEnvironment), timeout_(0), recursionDepth_(0) {
+    : parent_(enclosingEnvironment) {
     timestamp_ = std::chrono::steady_clock::now();
 }
 
@@ -99,7 +99,8 @@ std::any Frame::lookup(const std::string& name) const {
     return std::any{};  // null
 }
 
-void Frame::setRuntimeBounds(int64_t timeout, int64_t maxRecursionDepth) {
+void Frame::setRuntimeBounds(std::optional<int64_t> timeout,
+                             std::optional<int64_t> maxRecursionDepth) {
     timeout_ = timeout;
     recursionDepth_ = maxRecursionDepth;
     // Create Timebox to handle recursion depth checking (Java reference logic)
@@ -118,12 +119,17 @@ void Frame::setEvaluateExitCallback(ExitCallback callback) {
 }
 
 // Jsonata implementation
-Jsonata::Jsonata(RegexEngine regexEngine) : regexEngine_(regexEngine) {
+Jsonata::Jsonata(RegexEngine regexEngine, std::optional<int64_t> timeout,
+                 std::optional<int64_t> stack)
+    : regexEngine_(regexEngine) {
     parser_ = std::make_unique<Parser>();
     currentInstance_ = this;
     // Initialize environment like Java does: environment =
     // createFrame(staticFrame)
     environment_ = createFrame(getStaticFrame());
+    if (timeout.has_value() || stack.has_value()) {
+        environment_->setRuntimeBounds(timeout, stack);
+    }
     initializeErrorCodes();
 }
 
@@ -137,8 +143,10 @@ std::shared_ptr<Frame> Jsonata::createFrame(
     return std::make_shared<Frame>(enclosingEnvironment);
 }
 
-Jsonata Jsonata::jsonata(const std::string& expression, RegexEngine regexEngine) {
-    Jsonata instance(expression, regexEngine);
+Jsonata Jsonata::jsonata(const std::string& expression, RegexEngine regexEngine,
+                         std::optional<int64_t> timeout,
+                         std::optional<int64_t> stack) {
+    Jsonata instance(expression, regexEngine, timeout, stack);
     // Parse and store the expression
     return instance;
 }
@@ -2418,12 +2426,16 @@ Jsonata* Jsonata::getPerThreadInstance() {
     tls_environment_.reset();
 }
 
-Jsonata::Jsonata(const std::string& jsonataExpression, RegexEngine regexEngine)
+Jsonata::Jsonata(const std::string& jsonataExpression, RegexEngine regexEngine,
+                 std::optional<int64_t> timeout, std::optional<int64_t> stack)
     : regexEngine_(regexEngine) {
     currentInstance_ = this;
     // Initialize environment like Java does: environment =
     // createFrame(staticFrame)
     environment_ = createFrame(getStaticFrame());
+    if (timeout.has_value() || stack.has_value()) {
+        environment_->setRuntimeBounds(timeout, stack);
+    }
 
     // Parse the expression
     Parser parser;

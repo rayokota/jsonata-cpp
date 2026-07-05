@@ -175,6 +175,102 @@ TEST_F(StringTest, evalTest) {
     EXPECT_EQ(result.get<std::string>(), "AAA");
 }
 
+TEST_F(StringTest, evalSeesEnclosingVariableBindingTest) {
+    // $eval's dynamically-parsed expression must see variables bound in
+    // the enclosing scope (here, via an in-expression := assignment), not
+    // just a static top-level environment (regression test).
+    Jsonata expr("($x := 5; $eval(\"$x + 1\"))");
+    auto result = expr.evaluate(nullptr);
+    ASSERT_TRUE(result.is_number());
+    EXPECT_EQ(result.get<int64_t>(), 6);
+}
+
+TEST_F(StringTest, evalSeesExplicitTopLevelBindingsTest) {
+    // Same as above, but for bindings passed via evaluate()'s bindings
+    // argument rather than an in-expression assignment.
+    Jsonata expr("$eval(\"$x\")");
+    auto bindingFrame = expr.createFrame();
+    bindingFrame->bind("x", int64_t(42));
+    auto result = expr.evaluate(nullptr, bindingFrame);
+    ASSERT_TRUE(result.is_number());
+    EXPECT_EQ(result.get<int64_t>(), 42);
+}
+
+TEST_F(StringTest, evalUnaffectedBySiblingArgumentScopeTest) {
+    // $eval's second (focus) argument is evaluated before its own body
+    // runs, and here contains a nested block with its own environment.
+    // Confirms evaluating that sibling argument doesn't leave the tracked
+    // "current" environment pointing at the inner block's scope, which
+    // would otherwise cause $eval to resolve $x (from the outer scope) as
+    // undefined instead of 5. (jsonata-python had this bug; jsonata-cpp
+    // does not, verified as a regression test.)
+    Jsonata expr("($x := 5; $eval(\"$x\", (($y := 1; $y))))");
+    auto result = expr.evaluate(nullptr);
+    ASSERT_TRUE(result.is_number());
+    EXPECT_EQ(result.get<int64_t>(), 5);
+}
+
+TEST_F(StringTest, stackGuardrailStopsNonTailRecursionTest) {
+    // Ackermann is not tail-recursive, so its eval-apply depth grows with
+    // each call. A small `stack` bound should trip before it completes.
+    std::string ackExpr =
+        "($ack := function($m, $n) { $m = 0 ? $n + 1 : ($n = 0 ? "
+        "$ack($m - 1, 1) : $ack($m - 1, $ack($m, $n - 1))) }; $ack(4, 3))";
+    Jsonata expr(ackExpr, defaultRegexEngine(), std::nullopt, 50);
+    try {
+        expr.evaluate(nullptr);
+        FAIL() << "Expected JException D1011";
+    } catch (const JException& e) {
+        EXPECT_EQ(e.getError(), "D1011");
+    }
+}
+
+TEST_F(StringTest, stackGuardrailAllowsBoundedRecursionTest) {
+    // A stack bound that's high enough for the actual recursion depth
+    // should not interfere with a normal, terminating evaluation.
+    std::string ackExpr =
+        "($ack := function($m, $n) { $m = 0 ? $n + 1 : ($n = 0 ? "
+        "$ack($m - 1, 1) : $ack($m - 1, $ack($m, $n - 1))) }; $ack(3, 4))";
+    Jsonata expr(ackExpr, defaultRegexEngine(), std::nullopt, 1000);
+    auto result = expr.evaluate(nullptr);
+    ASSERT_TRUE(result.is_number());
+    EXPECT_EQ(result.get<int64_t>(), 125);
+}
+
+TEST_F(StringTest, timeoutGuardrailStopsInfiniteTailRecursionTest) {
+    // Tail recursion doesn't grow the eval-apply depth, so only the
+    // `timeout` guardrail (not `stack`) can catch this infinite loop.
+    Jsonata expr("($f := function($n) { $f($n + 1) }; $f(0))",
+                defaultRegexEngine(), 100, std::nullopt);
+    try {
+        expr.evaluate(nullptr);
+        FAIL() << "Expected JException D1012";
+    } catch (const JException& e) {
+        EXPECT_EQ(e.getError(), "D1012");
+    }
+}
+
+TEST_F(StringTest, stackGuardrailPropagatesThroughEvalTest) {
+    // $eval() reuses the enclosing instance's environment directly, so a
+    // `stack` bound configured on the outer expression must also apply to
+    // dynamically-evaluated code (regression test for guardrail bypass).
+    std::string ackExpr =
+        "($ack := function($m, $n) { $m = 0 ? $n + 1 : ($n = 0 ? "
+        "$ack($m - 1, 1) : $ack($m - 1, $ack($m, $n - 1))) }; "
+        "$ack(4, 3))";
+    Jsonata expr("$eval(\"" + ackExpr + "\")", defaultRegexEngine(),
+                std::nullopt, 50);
+    // Unlike jsonata-java (which wraps every $eval-time error, guardrail or
+    // not, into a generic D3121), jsonata-cpp's functionEval re-throws
+    // JException as-is, so the original D1011 code survives here.
+    try {
+        expr.evaluate(nullptr);
+        FAIL() << "Expected JException D1011";
+    } catch (const JException& e) {
+        EXPECT_EQ(e.getError(), "D1011");
+    }
+}
+
 TEST_F(StringTest, regexTest) {
     auto input = makeObject({{"foo", 1}, {"bar", 2}});
     auto result = Jsonata("($matcher := $eval('/^' & 'foo' & '/i'); $.$spread()[$.$keys() ~> $matcher])").evaluate(input);

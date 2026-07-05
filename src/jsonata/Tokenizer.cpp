@@ -53,8 +53,8 @@ std::unordered_map<std::string, std::string> Tokenizer::createEscapes() {
             {"f", "\f"},  {"n", "\n"},  {"r", "\r"}, {"t", "\t"}};
 }
 
-Tokenizer::Tokenizer(const std::string& path)
-    : path_(path), position_(0), depth_(0) {
+Tokenizer::Tokenizer(const std::string& path, RegexEngine regexEngine)
+    : path_(path), position_(0), depth_(0), regexEngine_(regexEngine) {
     // Pre-compute codepoints and byte offsets for O(1) charAt access
     auto it = path_.begin();
     while (it != path_.end()) {
@@ -109,7 +109,7 @@ bool Tokenizer::isClosingSlash(size_t position) const {
     return false;
 }
 
-std::regex Tokenizer::scanRegex() {
+std::shared_ptr<IRegex> Tokenizer::scanRegex() {
     // The prefix '/' will have been previously scanned. Find the end of the
     // regex. Search for closing '/' ignoring any that are escaped, or within
     // brackets (matches Java logic exactly)
@@ -121,6 +121,7 @@ std::regex Tokenizer::scanRegex() {
         int32_t currentChar = charAt(position_);
         if (isClosingSlash(position_)) {
             // end of regex found
+            size_t patternStart = start;
             pattern = substring(start, position_);
             if (pattern.empty()) {
                 throw JException("S0301", static_cast<int64_t>(position_));
@@ -140,17 +141,18 @@ std::regex Tokenizer::scanRegex() {
             }
             flags = substring(start, position_);
 
-            // Convert flags to std::regex_constants
-            std::regex_constants::syntax_option_type regexFlags =
-                std::regex_constants::ECMAScript;
+            RegexFlags regexFlags;
             if (flags.find('i') != std::string::npos) {
-                regexFlags |= std::regex_constants::icase;
+                regexFlags.caseInsensitive = true;
+            }
+            if (flags.find('m') != std::string::npos) {
+                regexFlags.multiline = true;
             }
 
             try {
-                return std::regex(pattern, regexFlags);
-            } catch (const std::regex_error& e) {
-                throw JException("S0301", static_cast<int64_t>(start), pattern);
+                return regexEngine_(pattern, regexFlags);
+            } catch (const std::exception& e) {
+                throw JException("S0301", static_cast<int64_t>(patternStart), pattern);
             }
         }
 

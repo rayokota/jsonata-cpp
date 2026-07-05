@@ -628,7 +628,8 @@ std::any Functions::split(const std::string& str, const std::string& separator,
     return result;
 }
 
-std::any Functions::split(const std::string& str, const std::regex& pattern,
+std::any Functions::split(const std::string& str,
+                          const std::shared_ptr<IRegex>& pattern,
                           int64_t limit) {
     Utils::JList result;
 
@@ -637,16 +638,10 @@ std::any Functions::split(const std::string& str, const std::regex& pattern,
         return result;
     }
 
-    // Use std::sregex_token_iterator to split with regex (equivalent to Java's
-    // Pattern.split with -1) The -1 parameter to sregex_token_iterator gives us
-    // the non-matching parts (like Java's split with trailing empties
-    // preserved)
-    std::sregex_token_iterator iter(str.begin(), str.end(), pattern, -1);
-    std::sregex_token_iterator end;
-
-    // Java logic: split completely first, then truncate if needed
-    for (; iter != end; ++iter) {
-        result.push_back(std::string(*iter));
+    // pattern->split gives us the non-matching parts (like Java's split with
+    // trailing empties preserved, equivalent to Pattern.split with -1)
+    for (const auto& part : pattern->split(str)) {
+        result.push_back(part);
     }
 
     // Java reference: if limit is specified and less than result size, truncate
@@ -1099,17 +1094,21 @@ Functions::getFunctionRegistry() {
                      // implementation)
                      if (isString(args[1])) {
                          auto pattern = std::any_cast<std::string>(args[1]);
+                         auto* jsonataInstance = Jsonata::getCurrentInstance();
+                         RegexEngine engine = jsonataInstance
+                                                  ? jsonataInstance->getRegexEngine()
+                                                  : defaultRegexEngine();
                          try {
-                             std::regex regex_pattern(pattern);
-                             auto result = match(str, regex_pattern, limit);
+                             auto regexPattern = engine(pattern, RegexFlags{});
+                             auto result = match(str, regexPattern, limit);
                              return std::any(result);
-                         } catch (const std::regex_error&) {
+                         } catch (const std::exception&) {
                              return std::any();
                          }
                      } else {
                          // Check if it's a regex object
                          try {
-                             auto regex = std::any_cast<std::regex>(args[1]);
+                             auto regex = std::any_cast<std::shared_ptr<IRegex>>(args[1]);
                              auto result = match(str, regex, limit);
                              return std::any(result);
                          } catch (const std::bad_any_cast&) {
@@ -1205,7 +1204,7 @@ Functions::getFunctionRegistry() {
                      } else {
                          // Check if it's a regex object
                          try {
-                             auto regex = std::any_cast<std::regex>(args[1]);
+                             auto regex = std::any_cast<std::shared_ptr<IRegex>>(args[1]);
                              return split(str, regex, limit);
                          } catch (const std::bad_any_cast&) {
                              // Not a regex object, check if it's a function
@@ -2473,7 +2472,7 @@ void Functions::stringifyInternal(std::ostringstream& os, const std::any& arg,
             // reference exactly Java: if (arg instanceof Symbol) { return; } -
             // outputs nothing (empty string)
             return;
-        } else if (arg.type() == typeid(std::regex)) {
+        } else if (arg.type() == typeid(std::shared_ptr<IRegex>)) {
             return;
         } else {
             throw JException("T0411", 0,
@@ -2678,14 +2677,15 @@ bool Functions::contains(const std::string& str, const std::any& token) {
             return str.find(searchStr) != std::string::npos;
         }
         // Java lines 696-701: else if (token instanceof Pattern)
-        else if (token.type() == typeid(std::regex)) {
-            auto regex = std::any_cast<std::regex>(token);
+        else if (token.type() == typeid(std::shared_ptr<IRegex>)) {
+            auto regex = std::any_cast<std::shared_ptr<IRegex>>(token);
             // Java lines 697-701: var matches = evaluateMatcher((Pattern)token,
-            // str); result = !matches.isEmpty();
-            auto matches = evaluateMatcher(regex, str);
-            return !matches.empty();
+            // str); result = !matches.isEmpty(); (IRegex::test is equivalent,
+            // without materializing the match list)
+            return regex->test(str);
         }
-        // Check if it's a regex object (stored as map with "type" = "regex")
+        // Fallback: token is neither a string nor a regex; stringify it and
+        // do a literal substring search.
         else {
             // Java line 703: else throw new Error("unknown type to match:
             // "+token); For C++, fall back to string conversion as fallback
@@ -2712,19 +2712,10 @@ std::optional<std::string> Functions::replace(const std::string& str,
         // Check if replacement is a function
         if (isLambda(replacement)) {
             // Handle function-based replacement
-            if (pattern.type() == typeid(std::regex)) {
-                auto regex = std::any_cast<std::regex>(pattern);
+            if (pattern.type() == typeid(std::shared_ptr<IRegex>)) {
+                auto regex = std::any_cast<std::shared_ptr<IRegex>>(pattern);
                 // Use thread-local instance (matching Java implementation)
                 return safeReplaceAllFn(str, regex, replacement);
-            } else {
-                // Check if it's a regex object (stored as map with "type" =
-                // "regex")
-                try {
-                    auto regex = std::any_cast<std::regex>(pattern);
-                    return safeReplaceAllFn(str, regex, replacement);
-                } catch (const std::bad_any_cast&) {
-                    // Not a regex object
-                }
             }
             // For string patterns with function replacement, would need more
             // complex logic
@@ -2743,9 +2734,9 @@ std::optional<std::string> Functions::replace(const std::string& str,
                 replaceStr = *replacementStr;
         }
 
-        // Handle regex patterns (direct std::regex or regex-object map)
-        if (pattern.type() == typeid(std::regex)) {
-            std::regex regex = std::any_cast<std::regex>(pattern);
+        // Handle regex patterns
+        if (pattern.type() == typeid(std::shared_ptr<IRegex>)) {
+            auto regex = std::any_cast<std::shared_ptr<IRegex>>(pattern);
 
             if (limit == -1) {
                 // No limit specified - replace all occurrences (Java default
@@ -2812,13 +2803,16 @@ std::optional<std::string> Functions::replace(const std::string& str,
         // String replacement) Compile the string pattern as a regex and apply
         // safeReplaceFirst repeatedly
         std::string result = str;
+        auto* jsonataInstance = Jsonata::getCurrentInstance();
+        RegexEngine engine =
+            jsonataInstance ? jsonataInstance->getRegexEngine() : defaultRegexEngine();
         try {
-            std::regex regex(searchStr);
+            auto regex = engine(searchStr, RegexFlags{});
             for (int64_t i = 0; i < limit; i++) {
                 result = safeReplaceFirst(result, regex, replaceStr);
             }
             return result;
-        } catch (const std::regex_error&) {
+        } catch (const std::exception&) {
             // If pattern is not a valid regex, fall back to literal first-only
             // replacements
             for (int64_t i = 0; i < limit; i++) {
@@ -4944,8 +4938,11 @@ std::any Functions::functionEval(const std::string& expr,
         // that doesn't get overwritten)
         auto savedInstance = Jsonata::getCurrentInstance();
 
-        // This creates NEW instance just to parse the expression
-        Jsonata astInstance(expr);
+        // This creates NEW instance just to parse the expression. Use the
+        // enclosing instance's regex engine so regex literals inside the
+        // eval'd expression are compiled consistently with the rest of the
+        // enclosing expression (e.g. RE2 instead of std::regex).
+        Jsonata astInstance(expr, currentInstance->getRegexEngine());
         auto expressionAst = astInstance.getExpression();
 
         // Restore the original current instance immediately after parsing
@@ -5000,23 +4997,20 @@ int64_t Functions::millis() {
         .count();
 }
 
-Utils::JList Functions::evaluateMatcher(const std::regex& pattern,
+Utils::JList Functions::evaluateMatcher(const std::shared_ptr<IRegex>& pattern,
                                         const std::string& str) {
     Utils::JList matches = Utils::createSequence();
-    std::sregex_iterator iter(str.begin(), str.end(), pattern);
-    std::sregex_iterator end;
 
-    for (; iter != end; ++iter) {
-        const std::smatch& smatch = *iter;
+    for (const auto& regexMatch : pattern->findAll(str)) {
         nlohmann::ordered_map<std::string, std::any> match;
-        match["match"] = smatch.str();
-        match["index"] = static_cast<int64_t>(smatch.position());
+        match["match"] = regexMatch.text;
+        match["index"] = static_cast<int64_t>(regexMatch.position);
 
         // Collect the groups starting from group 1 (excluding full match) -
         // matching Java implementation
         Utils::JList groups;
-        for (size_t g = 1; g < smatch.size(); ++g) {
-            groups.push_back(smatch[g].str());
+        for (const auto& group : regexMatch.groups) {
+            groups.push_back(group.value_or(""));
         }
         match["groups"] = groups;
         matches.push_back(match);
@@ -5025,7 +5019,8 @@ Utils::JList Functions::evaluateMatcher(const std::regex& pattern,
     return matches;
 }
 
-Utils::JList Functions::match(const std::string& str, const std::regex& pattern,
+Utils::JList Functions::match(const std::string& str,
+                              const std::shared_ptr<IRegex>& pattern,
                               int64_t limit) {
     auto matches = evaluateMatcher(pattern, str);
     if (limit > 0 && matches.size() > static_cast<size_t>(limit)) {
@@ -5147,112 +5142,115 @@ std::string Functions::safeReplacement(const std::string& replacement) {
     return result;
 }
 
-std::string Functions::safeReplaceAll(const std::string& str,
-                                      const std::regex& pattern,
-                                      const std::string& replacement) {
+std::string Functions::expandReplacement(const std::string& repl,
+                                         const RegexMatch& match) {
     // Manual implementation to match Java semantics for $-expansion and
-    // handling of ambiguous group references like $18 and $123.
+    // handling of ambiguous group references like $18 and $123. Shared by
+    // safeReplaceAll and safeReplaceFirst.
+    std::string out;
+    out.reserve(repl.size());
+    // max capturing group index (exclude 0, the full match)
+    const int64_t maxIndex = static_cast<int64_t>(match.groups.size());
+
+    for (size_t i = 0; i < repl.size(); ++i) {
+        char c = repl[i];
+        if (c != '$') {
+            out.push_back(c);
+            continue;
+        }
+
+        if (i + 1 >= repl.size()) {
+            out.push_back('$');
+            continue;
+        }
+
+        char next = repl[i + 1];
+        if (next == '$') {
+            out.push_back('$');
+            i += 1;
+            continue;
+        }
+
+        if (std::isdigit(static_cast<unsigned char>(next))) {
+            // Parse all following digits to form the number
+            size_t j = i + 1;
+            while (j < repl.size() &&
+                   std::isdigit(static_cast<unsigned char>(repl[j]))) {
+                ++j;
+            }
+            // digits are [i+1, j)
+            int64_t chosenIdx = -1;
+            size_t chosenLen = 0;
+            for (size_t k = (j - (i + 1)); k > 0; --k) {
+                int64_t idx;
+                try {
+                    idx = std::stoll(repl.substr(i + 1, k));
+                } catch (const std::exception&) {
+                    // Too large to represent (e.g. "$999999999999999999999");
+                    // treat like any other out-of-range group reference.
+                    idx = -1;
+                }
+                if (idx <= maxIndex && idx >= 0) {
+                    chosenIdx = idx;
+                    chosenLen = k;
+                    break;
+                }
+            }
+            if (chosenIdx >= 0) {
+                out += chosenIdx == 0 ? match.text
+                                      : match.groups[chosenIdx - 1].value_or("");
+                // Append leftover digits as literals (e.g., $123 with
+                // 12 valid -> append '3')
+                out.append(repl.substr(i + 1 + chosenLen,
+                                       j - (i + 1 + chosenLen)));
+                i = j - 1;
+                continue;
+            } else {
+                // No valid group index; consume first digit
+                // (interpreted as invalid $<d>) and emit nothing for
+                // the group, leaving remaining digits literal.
+                if (j > i + 1) {
+                    // skip first digit
+                    i = i + 1;  // loop will i++ again, effectively
+                                // skipping this digit
+                }
+                // Do not append '$'
+                continue;
+            }
+        }
+
+        // '$' followed by non-digit: treat as literal '$'
+        out.push_back('$');
+        // do not consume the next char here; it will be processed in
+        // next iteration
+    }
+
+    return out;
+}
+
+std::string Functions::safeReplaceAll(const std::string& str,
+                                      const std::shared_ptr<IRegex>& pattern,
+                                      const std::string& replacement) {
     std::string result;
     result.reserve(str.size());
+    std::string prepared = safeReplacement(replacement);
 
-    std::sregex_iterator it(str.begin(), str.end(), pattern);
-    std::sregex_iterator end;
-
+    // Stream matches one at a time via findFirst rather than materializing
+    // all of them up front with findAll -- avoids holding every match in
+    // memory simultaneously for inputs with many matches.
     size_t lastEnd = 0;
-    for (; it != end; ++it) {
-        const std::smatch& m = *it;
+    while (auto m = pattern->findFirst(str, lastEnd)) {
         // Guard against zero-length matches to avoid infinite loops
-        if (m.length() == 0) {
+        if (m->length == 0) {
             // Append the remainder and stop (aligns with override behavior)
             result.append(str.substr(lastEnd));
             return result;
         }
 
         // Text before match
-        result.append(
-            str.substr(lastEnd, static_cast<size_t>(m.position()) - lastEnd));
-
-        // Expand replacement against this match
-        auto expand = [&](const std::string& repl,
-                          const std::smatch& match) -> std::string {
-            std::string out;
-            out.reserve(repl.size());
-            const int64_t maxIndex = static_cast<int64_t>(match.size()) -
-                                 1;  // max capturing group index (exclude 0)
-
-            for (size_t i = 0; i < repl.size(); ++i) {
-                char c = repl[i];
-                if (c != '$') {
-                    out.push_back(c);
-                    continue;
-                }
-
-                if (i + 1 >= repl.size()) {
-                    out.push_back('$');
-                    continue;
-                }
-
-                char next = repl[i + 1];
-                if (next == '$') {
-                    out.push_back('$');
-                    i += 1;
-                    continue;
-                }
-
-                if (std::isdigit(static_cast<unsigned char>(next))) {
-                    // Parse all following digits to form the number
-                    size_t j = i + 1;
-                    while (j < repl.size() &&
-                           std::isdigit(static_cast<unsigned char>(repl[j]))) {
-                        ++j;
-                    }
-                    // digits are [i+1, j)
-                    int64_t chosenIdx = -1;
-                    size_t chosenLen = 0;
-                    for (size_t k = (j - (i + 1)); k >= 1; --k) {
-                        int64_t idx = std::stoi(repl.substr(i + 1, k));
-                        if (idx <= maxIndex && idx >= 0) {
-                            chosenIdx = idx;
-                            chosenLen = k;
-                            break;
-                        }
-                        if (k == 1) break;  // prevent underflow of size_t
-                    }
-                    if (chosenIdx >= 0) {
-                        out += match.str(chosenIdx);
-                        // Append leftover digits as literals (e.g., $123 with
-                        // 12 valid -> append '3')
-                        out.append(repl.substr(i + 1 + chosenLen,
-                                               j - (i + 1 + chosenLen)));
-                        i = j - 1;
-                        continue;
-                    } else {
-                        // No valid group index; consume first digit
-                        // (interpreted as invalid $<d>) and emit nothing for
-                        // the group, leaving remaining digits literal.
-                        if (j > i + 1) {
-                            // skip first digit
-                            i = i + 1;  // loop will i++ again, effectively
-                                        // skipping this digit
-                        }
-                        // Do not append '$'
-                        continue;
-                    }
-                }
-
-                // '$' followed by non-digit: treat as literal '$'
-                out.push_back('$');
-                // do not consume the next char here; it will be processed in
-                // next iteration
-            }
-
-            return out;
-        };
-
-        std::string prepared = safeReplacement(replacement);
-        result += expand(prepared, m);
-
-        lastEnd = static_cast<size_t>(m.position() + m.length());
+        result.append(str.substr(lastEnd, m->position - lastEnd));
+        result += expandReplacement(prepared, *m);
+        lastEnd = m->position + m->length;
     }
 
     // Trailing remainder
@@ -5261,100 +5259,44 @@ std::string Functions::safeReplaceAll(const std::string& str,
 }
 
 std::string Functions::safeReplaceFirst(const std::string& str,
-                                        const std::regex& pattern,
+                                        const std::shared_ptr<IRegex>& pattern,
                                         const std::string& replacement) {
-    // Manual first-only replace using same expansion as safeReplaceAll
-    std::smatch m;
-    if (!std::regex_search(str, m, pattern)) {
+    auto m = pattern->findFirst(str);
+    if (!m) {
         return str;
     }
 
     // Guard against zero-length match
-    if (m.length() == 0) {
+    if (m->length == 0) {
         return str;
     }
-
-    auto expand = [&](const std::string& repl,
-                      const std::smatch& match) -> std::string {
-        std::string out;
-        out.reserve(repl.size());
-        const int64_t maxIndex = static_cast<int64_t>(match.size()) -
-                             1;  // max capturing group index (exclude 0)
-
-        for (size_t i = 0; i < repl.size(); ++i) {
-            char c = repl[i];
-            if (c != '$') {
-                out.push_back(c);
-                continue;
-            }
-            if (i + 1 >= repl.size()) {
-                out.push_back('$');
-                continue;
-            }
-            char next = repl[i + 1];
-            if (next == '$') {
-                out.push_back('$');
-                i += 1;
-                continue;
-            }
-            if (std::isdigit(static_cast<unsigned char>(next))) {
-                size_t j = i + 1;
-                while (j < repl.size() &&
-                       std::isdigit(static_cast<unsigned char>(repl[j])))
-                    ++j;
-                int64_t chosenIdx = -1;
-                size_t chosenLen = 0;
-                for (size_t k = (j - (i + 1)); k >= 1; --k) {
-                    int64_t idx = std::stoi(repl.substr(i + 1, k));
-                    if (idx <= maxIndex && idx >= 0) {
-                        chosenIdx = idx;
-                        chosenLen = k;
-                        break;
-                    }
-                    if (k == 1) break;
-                }
-                if (chosenIdx >= 0) {
-                    out += match.str(chosenIdx);
-                    out.append(repl.substr(i + 1 + chosenLen,
-                                           j - (i + 1 + chosenLen)));
-                    i = j - 1;
-                    continue;
-                } else {
-                    // consume first digit of the invalid group reference and
-                    // emit nothing
-                    if (j > i + 1) {
-                        i = i + 1;
-                    }
-                    continue;
-                }
-            }
-            out.push_back('$');
-        }
-        return out;
-    };
 
     std::string prepared = safeReplacement(replacement);
     std::string res;
     res.reserve(str.size());
-    res.append(str.substr(0, static_cast<size_t>(m.position())));
-    res += expand(prepared, m);
-    res.append(str.substr(static_cast<size_t>(m.position() + m.length())));
+    res.append(str.substr(0, m->position));
+    res += expandReplacement(prepared, *m);
+    res.append(str.substr(m->position + m->length));
     return res;
 }
 
 std::string Functions::safeReplaceAllFn(const std::string& str,
-                                        const std::regex& pattern,
+                                        const std::shared_ptr<IRegex>& pattern,
                                         const std::any& func) {
     // Following Java implementation: Functions.java lines 844-859
-    std::string result = str;
-    std::sregex_iterator matchIter(str.begin(), str.end(), pattern);
-    std::sregex_iterator endIter;
-
+    // Stream matches one at a time via findFirst rather than materializing
+    // all of them up front with findAll.
     size_t lastPos = 0;
+    size_t searchPos = 0;
     std::string finalResult;
 
-    for (; matchIter != endIter; ++matchIter) {
-        const std::smatch& match = *matchIter;
+    while (auto matchOpt = pattern->findFirst(str, searchPos)) {
+        const RegexMatch& match = *matchOpt;
+        // Advance the search position past zero-length matches (matching
+        // IRegex::findAll's own behavior) so we don't loop forever
+        // re-finding the same empty match; `lastPos` (output bookkeeping)
+        // is left as-is for a zero-length match, unchanged from before.
+        searchPos = match.position + (match.length == 0 ? 1 : match.length);
 
         try {
             // Convert match to Jsonata format (equivalent to Java's
@@ -5382,10 +5324,10 @@ std::string Functions::safeReplaceAllFn(const std::string& str,
                     std::any_cast<std::string>(functionResult);
 
                 // Add text before match
-                finalResult += str.substr(lastPos, match.position() - lastPos);
+                finalResult += str.substr(lastPos, match.position - lastPos);
                 // Add replacement
                 finalResult += replacementStr;
-                lastPos = match.position() + match.length();
+                lastPos = match.position + match.length;
             } else {
                 // Java line 852: return null for non-string results
                 // This will be caught by the replace function and converted to
@@ -5410,16 +5352,16 @@ std::string Functions::safeReplaceAllFn(const std::string& str,
 }
 
 nlohmann::ordered_map<std::string, std::any> Functions::toJsonataMatch(
-    const std::smatch& match) {
+    const RegexMatch& match) {
     nlohmann::ordered_map<std::string, std::any> result;
 
-    result["match"] = match.str();
+    result["match"] = match.text;
 
     // Based on test expectations: groups array starts from first capture group
     // (excluding full match) This matches the behavior expected by test case034
     Utils::JList groups;
-    for (size_t i = 1; i < match.size(); ++i) {
-        groups.push_back(match[i].str());
+    for (const auto& group : match.groups) {
+        groups.push_back(group.value_or(""));
     }
 
     result["groups"] = groups;

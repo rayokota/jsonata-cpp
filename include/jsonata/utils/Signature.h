@@ -48,6 +48,7 @@
 #include <vector>
 
 // Include Utils to resolve JList
+#include "../IRegex.h"
 #include "../Utils.h"
 
 namespace jsonata {

@@ -369,7 +369,8 @@ class Parser {
 
     // Main parsing method
     std::shared_ptr<Symbol> parse(const std::string& source,
-                                  bool recover = false);
+                                  bool recover = false,
+                                  RegexEngine regexEngine = defaultRegexEngine());
 
     // Get parsing errors
     const std::vector<std::shared_ptr<std::exception>>& getErrors() const {

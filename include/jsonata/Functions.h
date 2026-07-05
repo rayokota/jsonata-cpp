@@ -27,6 +27,7 @@
 #include <string>
 #include <vector>
 
+#include "jsonata/IRegex.h"
 #include "Utils.h"
 
 namespace jsonata {
@@ -66,7 +67,8 @@ class Functions {
     static std::optional<std::string> trim(const std::string& str);
     static std::any split(const std::string& str, const std::string& separator,
                           int64_t limit = -1);
-    static std::any split(const std::string& str, const std::regex& pattern,
+    static std::any split(const std::string& str,
+                          const std::shared_ptr<IRegex>& pattern,
                           int64_t limit = -1);
     static std::optional<std::string> join(const Utils::JList& arr,
                                            const std::string& separator = "");
@@ -173,9 +175,10 @@ class Functions {
     static int64_t millis();
 
     // Regex functions
-    static Utils::JList evaluateMatcher(const std::regex& pattern,
+    static Utils::JList evaluateMatcher(const std::shared_ptr<IRegex>& pattern,
                                         const std::string& str);
-    static Utils::JList match(const std::string& str, const std::regex& pattern,
+    static Utils::JList match(const std::string& str,
+                              const std::shared_ptr<IRegex>& pattern,
                               int64_t limit = -1);
 
     // Lambda detection
@@ -225,16 +228,18 @@ class Functions {
     static bool isNumericString(const std::string& str);
     static std::string safeReplacement(const std::string& replacement);
     static std::string safeReplaceAll(const std::string& str,
-                                      const std::regex& pattern,
+                                      const std::shared_ptr<IRegex>& pattern,
                                       const std::string& replacement);
     static std::string safeReplaceFirst(const std::string& str,
-                                        const std::regex& pattern,
+                                        const std::shared_ptr<IRegex>& pattern,
                                         const std::string& replacement);
     static std::string safeReplaceAllFn(const std::string& str,
-                                        const std::regex& pattern,
+                                        const std::shared_ptr<IRegex>& pattern,
                                         const std::any& func);
+    static std::string expandReplacement(const std::string& replacement,
+                                         const RegexMatch& match);
     static nlohmann::ordered_map<std::string, std::any> toJsonataMatch(
-        const std::smatch& match);
+        const RegexMatch& match);
     static std::string encodeURI(const std::string& uri);
     static std::string leftPad(const std::string& str, int64_t size,
                                const std::string& padStr = " ");

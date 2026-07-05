@@ -129,6 +129,10 @@ std::unordered_map<std::string, std::string> errorCodes = {
     {"D1002", "Cannot negate a non-numeric value: {{value}}"},
     {"D1004", "Regular expression matches zero length string"},
     {"D1009", "Multiple key definitions evaluate to same key: {{value}}"},
+    {"D1011",
+     "Stack overflow. Check for non-terminating recursive function.  "
+     "Consider rewriting as tail-recursive"},
+    {"D1012", "Evaluation timeout after {{value}} milliseconds. Check for infinite loop"},
     {"D2005",
      "The left side of := must be a variable name (start with $)"},  // defunct
                                                                      // -

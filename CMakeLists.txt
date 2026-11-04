@@ -118,6 +118,7 @@ if(JSONATA_BUILD_TESTS)
         test/SerializationTest.cpp
         test/SignatureTest.cpp
         test/StringTest.cpp
+        test/TransformClosureTest.cpp
         test/ThreadTest.cpp
         test/TypesTest.cpp
     )

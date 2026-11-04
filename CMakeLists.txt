@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(jsonata
-    VERSION 0.1.1
+    VERSION 0.2.1
     DESCRIPTION "JSONata for C++"
     LANGUAGES CXX
 )
@@ -111,6 +111,7 @@ if(JSONATA_BUILD_TESTS)
         test/ArrayTest.cpp
         test/CustomFunctionTest.cpp
         test/DateTimeTest.cpp
+        test/FrameLifetimeTest.cpp
         test/NullSafetyTest.cpp
         test/NumberTestSimplified.cpp
         test/ParseIntegerTest.cpp

@@ -99,6 +99,95 @@ std::any Frame::lookup(const std::string& name) const {
     return std::any{};  // null
 }
 
+void Frame::clearBindings() { bindings_.clear(); }
+
+namespace {
+
+// Records the frames created during one top-level evaluate() call so that
+// their bindings can be cleared when it returns.
+//
+// A closure (lambda, partial application or transform) holds a strong
+// reference to the frame it was created in, and a frame holds strong
+// references to its bindings. Binding a closure into the frame it captured,
+// e.g. `($f := function($s){$s}; 1)`, therefore forms a shared_ptr cycle that
+// is never freed. Every such cycle passes through some frame's bindings,
+// because a frame only otherwise refers upward to its parent, so clearing
+// the bindings of every frame created during the evaluation breaks them all.
+// No closure can be used after evaluate() returns, since the result has
+// already been converted to JSON.
+class FrameRegistry {
+  public:
+    void add(const std::shared_ptr<Frame>& frame) {
+        // Frames that have already been freed still occupy a slot (and, with
+        // make_shared, their storage), so periodically drop them to keep the
+        // registry proportional to the frames that are still alive.
+        if (frames_.size() >= compactThreshold_) {
+            frames_.erase(std::remove_if(frames_.begin(), frames_.end(),
+                                         [](const std::weak_ptr<Frame>& f) {
+                                             return f.expired();
+                                         }),
+                          frames_.end());
+            compactThreshold_ =
+                std::max(kMinCompactThreshold, frames_.size() * 2);
+        }
+        frames_.push_back(frame);
+    }
+
+    // Clears the bindings of every recorded frame that is still alive.
+    // Clearing one frame may free others; their entries then simply fail to
+    // lock. Does not allocate, so it is safe to call from a destructor.
+    void releaseAll() noexcept {
+        for (const auto& weakFrame : frames_) {
+            if (auto frame = weakFrame.lock()) {
+                frame->clearBindings();
+            }
+        }
+        frames_.clear();
+    }
+
+  private:
+    static constexpr size_t kMinCompactThreshold = 1024;
+    std::vector<std::weak_ptr<Frame>> frames_;
+    size_t compactThreshold_ = kMinCompactThreshold;
+};
+
+// The registry of the top-level evaluate() call in progress on this thread,
+// or null if there is none.
+thread_local FrameRegistry* currentFrameRegistry = nullptr;
+
+// Covers one top-level evaluate() call. While it is alive, frames created by
+// createEvaluationFrame() are recorded; when it is destroyed, by a return or
+// an exception, their bindings are cleared and the thread-local evaluation
+// context is restored to what it was before, so a nested top-level
+// evaluate() (e.g. from a custom function) leaves the outer one intact.
+class EvaluationScope {
+  public:
+    EvaluationScope()
+        : previousRegistry_(currentFrameRegistry),
+          previousInput_(std::move(Jsonata::tls_input_)),
+          previousEnvironment_(std::move(Jsonata::tls_environment_)) {
+        currentFrameRegistry = &registry_;
+    }
+
+    ~EvaluationScope() {
+        Jsonata::tls_input_ = std::move(previousInput_);
+        Jsonata::tls_environment_ = std::move(previousEnvironment_);
+        registry_.releaseAll();
+        currentFrameRegistry = previousRegistry_;
+    }
+
+    EvaluationScope(const EvaluationScope&) = delete;
+    EvaluationScope& operator=(const EvaluationScope&) = delete;
+
+  private:
+    FrameRegistry registry_;
+    FrameRegistry* previousRegistry_;
+    std::any previousInput_;
+    std::shared_ptr<Frame> previousEnvironment_;
+};
+
+}  // namespace
+
 void Frame::setRuntimeBounds(std::optional<int64_t> timeout,
                              std::optional<int64_t> maxRecursionDepth) {
     timeout_ = timeout;
@@ -141,6 +230,15 @@ std::shared_ptr<Frame> Jsonata::createFrame() {
 std::shared_ptr<Frame> Jsonata::createFrame(
     std::shared_ptr<Frame> enclosingEnvironment) {
     return std::make_shared<Frame>(enclosingEnvironment);
+}
+
+std::shared_ptr<Frame> Jsonata::createEvaluationFrame(
+    std::shared_ptr<Frame> enclosingEnvironment) {
+    auto frame = std::make_shared<Frame>(std::move(enclosingEnvironment));
+    if (currentFrameRegistry) {
+        currentFrameRegistry->add(frame);
+    }
+    return frame;
 }
 
 Jsonata Jsonata::jsonata(const std::string& expression, RegexEngine regexEngine,
@@ -1995,7 +2093,7 @@ std::any Jsonata::evaluateBlock(std::shared_ptr<Parser::Symbol> expr,
 
     // create a new frame to limit the scope of variable assignments
     // TODO, only do this if the post-parse stage has flagged this as required
-    auto frame = createFrame(environment);
+    auto frame = createEvaluationFrame(environment);
 
     // invoke each expression in turn
     // only return the result of the last one
@@ -2313,7 +2411,7 @@ std::vector<std::exception_ptr> Jsonata::getErrors() const { return errors_; }
 std::shared_ptr<Frame> Jsonata::createFrameFromTuple(
     std::shared_ptr<Frame> environment, const std::any& tupleAny) {
     // Java reference lines 324-329: createFrameFromTuple implementation
-    auto frame = createFrame(environment);
+    auto frame = createEvaluationFrame(environment);
     auto tuple =
         std::any_cast<nlohmann::ordered_map<std::string, std::any>>(tupleAny);
     for (const auto& [key, value] : tuple) {
@@ -2465,13 +2563,16 @@ nlohmann::ordered_json Jsonata::evaluate(const nlohmann::ordered_json& input,
         throw JException("S0500", 0);  // Expression compilation failed
     }
 
+    // Releases the frames this evaluation creates once it finishes.
+    EvaluationScope scope;
+
     // Convert JSON input to std::any domain for the evaluator
     std::any anyInput = orderedJsonToAny(input);
 
     // Always evaluate in a fresh child frame of the shared environment,
     // then (optionally) copy provided bindings into it. This avoids
     // concurrent mutations of the shared environment.
-    std::shared_ptr<Frame> exec_env = createFrame(environment_);
+    std::shared_ptr<Frame> exec_env = createEvaluationFrame(environment_);
     if (bindings != nullptr) {
         for (const auto& [key, value] : bindings->getBindings()) {
             exec_env->bind(key, value);
@@ -2510,9 +2611,6 @@ nlohmann::ordered_json Jsonata::evaluate(const nlohmann::ordered_json& input,
         tls_input_ = processedInput;
         tls_environment_ = exec_env;
         result = evaluate(expression_, processedInput, exec_env);
-        // Clear TLS after evaluation to avoid dangling references
-        tls_input_.reset();
-        tls_environment_.reset();
         result = Utils::convertNulls(result);
         // Convert result back to nlohmann::ordered_json
         return anyToOrderedJson(result);
@@ -2544,10 +2642,13 @@ nlohmann::json Jsonata::evaluate(const nlohmann::json& input,
         throw JException("S0500", 0);
     }
 
+    // Releases the frames this evaluation creates once it finishes.
+    EvaluationScope scope;
+
     // Convert JSON input to std::any domain for the evaluator
     std::any anyInput = jsonToAny(input);
 
-    std::shared_ptr<Frame> exec_env = createFrame(environment_);
+    std::shared_ptr<Frame> exec_env = createEvaluationFrame(environment_);
     if (bindings != nullptr) {
         for (const auto& [key, value] : bindings->getBindings()) {
             exec_env->bind(key, value);
@@ -2573,8 +2674,6 @@ nlohmann::json Jsonata::evaluate(const nlohmann::json& input,
         tls_input_ = processedInput;
         tls_environment_ = exec_env;
         result = evaluate(expression_, processedInput, exec_env);
-        tls_input_.reset();
-        tls_environment_.reset();
         result = Utils::convertNulls(result);
         // Convert result to nlohmann::json
         return anyToJson(result);
@@ -3160,13 +3259,14 @@ std::any Jsonata::applyProcedure(const std::any& _proc,
             auto symbolEnv =
                 std::any_cast<std::shared_ptr<Frame>>(symbol->environment);
             auto instance = getCurrentInstance();
-            env = instance ? instance->createFrame(symbolEnv)
+            env = instance ? instance->createEvaluationFrame(symbolEnv)
                            : std::make_shared<Frame>();
         } catch (const std::bad_any_cast&) {
             // Fallback if environment is not a Frame - this shouldn't normally
             // happen
             auto instance = getCurrentInstance();
-            env = instance ? instance->createFrame(instance->getEnvironment())
+            env = instance ? instance->createEvaluationFrame(
+                                 instance->getEnvironment())
                            : std::make_shared<Frame>();
         }
 
@@ -3842,7 +3942,7 @@ std::any Jsonata::partialApplyProcedure(std::shared_ptr<Parser::Symbol> proc,
     // Create a closure, bind the supplied parameters and return a function that
     // takes the remaining (?) parameters
 
-    auto env = createFrame(
+    auto env = createEvaluationFrame(
         proc->environment.has_value()
             ? std::any_cast<std::shared_ptr<Frame>>(proc->environment)
             : getEnvironment());

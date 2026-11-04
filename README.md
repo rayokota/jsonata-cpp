@@ -111,6 +111,14 @@ jsonata::Jsonata expr("<JSONata expression>", re2RegexEngine(),
 auto result = expr.evaluate(data);
 ```
 
+## Lambda Lifetime
+
+Functions created by an expression — lambdas (`function($x) {...}`), partial applications (`$add(1, ?)`) and
+transforms (`|...|...|`) — only live for the duration of the `evaluate()` call that created them. When `evaluate()`
+returns, the variables they captured are released. A custom function that receives one of these functions as an
+argument can call it during that evaluation, but should not keep it to call later: its captured variables would then be
+undefined.
+
 ## Running Tests
 
 This project uses the repository of the reference implementation as a submodule. This allows referencing the current version of the unit tests. To clone this repository, run:

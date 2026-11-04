@@ -84,6 +84,11 @@ class Frame {
     void bind(const std::string& name, const std::any& value);
     std::any lookup(const std::string& name) const;
 
+    // Drops every binding held by this frame. Used at the end of an
+    // evaluation to break the shared_ptr cycles that closures form with the
+    // frames they capture.
+    void clearBindings();
+
     // Runtime bounds. Either bound may be left unset (std::nullopt) to leave
     // that guardrail disabled.
     void setRuntimeBounds(std::optional<int64_t> timeout,
@@ -421,6 +426,14 @@ class Jsonata {
 
     // Error code mappings
     void initializeErrorCodes();
+
+  private:
+    // Creates a frame for use during evaluation. Unlike createFrame(), a
+    // frame made while a top-level evaluate() call is in progress has its
+    // bindings cleared when that call returns, which frees any closures
+    // that refer back to it.
+    std::shared_ptr<Frame> createEvaluationFrame(
+        std::shared_ptr<Frame> enclosingEnvironment);
 };
 
 // Global static methods

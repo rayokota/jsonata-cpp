@@ -1933,6 +1933,10 @@ std::any Jsonata::evaluateTransform(std::shared_ptr<Parser::Symbol> expr,
     funcSymbol->_jsonata_lambda = true;
     funcSymbol->_transform_expr = expr;
     funcSymbol->value = transformer;
+    // Like a lambda, a transform closes over the environment it is defined
+    // in: applyProcedure() evaluates its pattern, update and delete clauses
+    // there, so they can see the enclosing variables.
+    funcSymbol->environment = environment;
 
     return funcSymbol;
 }
@@ -2959,9 +2963,15 @@ std::any Jsonata::applyProcedure(const std::any& _proc,
 
                 // Get environment from closure
                 std::shared_ptr<Frame> environment;
-                if (symbol->value.has_value() &&
-                    symbol->value.type() ==
-                        typeid(nlohmann::ordered_map<std::string, std::any>)) {
+                if (symbol->environment.type() ==
+                    typeid(std::shared_ptr<Frame>)) {
+                    // Set by evaluateTransform()
+                    environment = std::any_cast<std::shared_ptr<Frame>>(
+                        symbol->environment);
+                } else if (symbol->value.has_value() &&
+                           symbol->value.type() ==
+                               typeid(nlohmann::ordered_map<std::string,
+                                                            std::any>)) {
                     auto closureMap = std::any_cast<
                         nlohmann::ordered_map<std::string, std::any>>(
                         symbol->value);

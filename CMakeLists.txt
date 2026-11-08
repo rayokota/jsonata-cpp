@@ -109,8 +109,10 @@ if(JSONATA_BUILD_TESTS)
     # Collect all Google Test format test files
     set(TEST_SOURCES
         test/ArrayTest.cpp
+        test/ConditionTest.cpp
         test/CustomFunctionTest.cpp
         test/DateTimeTest.cpp
+        test/ErrorMessageTest.cpp
         test/FrameLifetimeTest.cpp
         test/NullSafetyTest.cpp
         test/NumberTestSimplified.cpp

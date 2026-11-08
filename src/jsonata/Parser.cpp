@@ -84,6 +84,54 @@ std::shared_ptr<Parser::Symbol> Parser::Symbol::create() {
     return copy;
 }
 
+std::shared_ptr<Parser::Symbol> Parser::Symbol::deepClone() const {
+    auto copy = std::make_shared<Symbol>(*this);
+
+    auto cloneNode = [](std::shared_ptr<Symbol>& node) {
+        if (node) {
+            node = node->deepClone();
+        }
+    };
+    auto cloneNodes = [&](std::vector<std::shared_ptr<Symbol>>& nodes) {
+        for (auto& node : nodes) {
+            cloneNode(node);
+        }
+    };
+    auto clonePairs =
+        [&](std::vector<std::pair<std::shared_ptr<Symbol>,
+                                  std::shared_ptr<Symbol>>>& pairs) {
+            for (auto& pair : pairs) {
+                cloneNode(pair.first);
+                cloneNode(pair.second);
+            }
+        };
+
+    cloneNode(copy->lhs);
+    cloneNode(copy->rhs);
+    cloneNode(copy->expression);
+    cloneNode(copy->condition);
+    cloneNode(copy->then_expr);
+    cloneNode(copy->else_expr);
+    cloneNodes(copy->expressions);
+    cloneNodes(copy->arguments);
+    cloneNodes(copy->steps);
+    cloneNodes(copy->terms);
+    cloneNodes(copy->predicate);
+    cloneNode(copy->body);
+    cloneNode(copy->procedure);
+    cloneNode(copy->_transform_expr);
+    cloneNode(copy->group);
+    cloneNode(copy->nextFunction);
+    cloneNodes(copy->stages);
+    cloneNode(copy->pattern);
+    cloneNode(copy->update);
+    cloneNode(copy->delete_);
+    clonePairs(copy->lhsObject);
+    clonePairs(copy->rhsObject);
+    cloneNodes(copy->rhsTerms);
+    return copy;
+}
+
 std::shared_ptr<Parser::Symbol> Parser::Terminal::create() {
     // Create a copy of this terminal
     auto copy = std::make_shared<Terminal>(this->id);
@@ -613,7 +661,9 @@ std::shared_ptr<Parser::Symbol> Parser::ElvisOperator::led(
     std::shared_ptr<Symbol> left) {
     // Elvis operator: value ?: default
     type = "condition";
-    condition = left;
+    // The condition and then branches must be separate nodes, otherwise
+    // processAST would process the shared node twice (e.g. -5 becomes 5)
+    condition = left->deepClone();
     then_expr = left;  // Same as condition for elvis
 
     // Parse the default value
@@ -705,8 +755,9 @@ std::shared_ptr<Parser::Symbol> Parser::NullCoalescing::led(
     p->type = "variable";
     p->value = std::string("exists");
 
-    // Set arguments to [left]
-    c->arguments = {left};
+    // Set arguments to [left]. left is also the then branch, so give exists()
+    // its own copy
+    c->arguments = {left->deepClone()};
 
     // then = left, else = expression(0)
     then_expr = left;

@@ -38,6 +38,7 @@ class JException : public std::runtime_error {
     int64_t location_;
     std::any current_;
     std::any expected_;
+    std::any extra_;
 
     // Recovery fields
     std::string type_;
@@ -52,6 +53,10 @@ class JException : public std::runtime_error {
                const std::any& currentToken);
     JException(const std::string& error, int64_t location,
                const std::any& currentToken, const std::any& expected);
+    // For error messages that have three placeholders (e.g. T0412 and T2009)
+    JException(const std::string& error, int64_t location,
+               const std::any& currentToken, const std::any& expected,
+               const std::any& extra);
     JException(const std::exception& cause, const std::string& error,
                int64_t location, const std::any& currentToken,
                const std::any& expected);
@@ -61,6 +66,7 @@ class JException : public std::runtime_error {
     int64_t getLocation() const;
     const std::any& getCurrent() const;
     const std::any& getExpected() const;
+    const std::any& getExtra() const;
 
     // Error message generation
     std::string getDetailedErrorMessage() const;
@@ -71,6 +77,9 @@ class JException : public std::runtime_error {
     static std::string msg(const std::string& error, int64_t location,
                            const std::any& arg1, const std::any& arg2,
                            bool details);
+    static std::string msg(const std::string& error, int64_t location,
+                           const std::any& arg1, const std::any& arg2,
+                           const std::any& arg3, bool details);
 
     // Recovery fields accessors
     const std::string& getType() const { return type_; }
@@ -81,8 +90,7 @@ class JException : public std::runtime_error {
 
   private:
     static std::string generateMessage(const std::string& error, int64_t location,
-                                       const std::any& arg1,
-                                       const std::any& arg2,
+                                       const std::vector<std::any>& args,
                                        bool details = false);
 };
 

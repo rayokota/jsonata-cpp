@@ -1134,7 +1134,7 @@ std::any Jsonata::evaluateComparisonExpression(const std::any& lhs,
             // doubleValue()) Continue to comparison below with converted values
         } else {
             // Java lines 930-936: different types that are not both numeric
-            throw JException("T2009", 0, lhs, rhs);
+            throw JException("T2009", 0, lhs, rhs, op);
         }
     }
 
@@ -3962,11 +3962,12 @@ std::any Jsonata::partialApplyProcedure(std::shared_ptr<Parser::Symbol> proc,
     for (auto param : proc->arguments) {
         std::any arg = (index < args.size()) ? args[index] : std::any{};
 
-        // Check if argument is placeholder or missing (Java lines 1916-1922)
+        // Only ? placeholders are left unbound. A missing argument is bound
+        // to undefined, as in jsonata-js, so that callers such as $map do not
+        // pass extra arguments (e.g. the index) into its position.
         bool isPlaceholder = false;
-        if (!arg.has_value()) {
-            isPlaceholder = true;
-        } else if (arg.type() == typeid(std::shared_ptr<Parser::Symbol>)) {
+        if (arg.has_value() &&
+            arg.type() == typeid(std::shared_ptr<Parser::Symbol>)) {
             auto argSymbol =
                 std::any_cast<std::shared_ptr<Parser::Symbol>>(arg);
             if (argSymbol && argSymbol->type == "operator" &&
@@ -3990,11 +3991,9 @@ std::any Jsonata::partialApplyProcedure(std::shared_ptr<Parser::Symbol> proc,
     procedure->environment = env;
     procedure->arguments = unboundArgs;
     procedure->body = proc->body;
-
-    // Copy signature from original procedure to maintain signature validation
-    // This is critical for partial application to work correctly with
-    // signatures
-    procedure->signature = proc->signature;
+    // Like jsonata-js, the partial has no signature: the original signature
+    // describes all of the parameters, while the partial only takes the ones
+    // left unbound
 
     return procedure;
 }
@@ -4005,54 +4004,27 @@ std::any Jsonata::partialApplyNativeFunction(const std::any& native,
     // Following Java implementation: Jsonata.java lines 1939-1974
     // Create a lambda function that wraps and invokes the native function
 
-    // Get the number of arguments for this function from its signature
-    int64_t numberOfArgs = 2;  // Default for most functions
+    // Leave out trailing arguments that weren't supplied, so the native
+    // function is called without them and optional parameters aren't
+    // validated against undefined. A function without a signature is passed
+    // the arguments it was given.
+    size_t nargs = args.size();
     if (native.type() == typeid(JFunction)) {
-        auto jfunc = std::any_cast<JFunction>(native);
+        const auto& jfunc = std::any_cast<const JFunction&>(native);
         if (jfunc.signature) {
-            numberOfArgs = jfunc.signature->getNumberOfArgs();
+            nargs = std::min(
+                nargs, static_cast<size_t>(jfunc.signature->getNumberOfArgs()));
         }
     }
 
-    // Build the parameter list and argument list (Java lines 1947-1956)
-    std::vector<std::string> sigArgs;
-    std::vector<std::string> callArgs;
-    for (int64_t i = 0; i < numberOfArgs; i++) {
-        std::string argName = "$" + std::string(1, static_cast<char>('a' + i));
-        sigArgs.push_back(argName);
-
-        // Check if this argument is provided or needs to be a parameter
-        if (i < args.size() && args[i].has_value()) {
-            // Check if it's a placeholder
-            if (args[i].type() == typeid(std::shared_ptr<Parser::Symbol>)) {
-                auto argSymbol =
-                    std::any_cast<std::shared_ptr<Parser::Symbol>>(args[i]);
-                if (argSymbol && argSymbol->type == "operator" &&
-                    std::any_cast<std::string>(argSymbol->value) == "?") {
-                    callArgs.push_back(argName);  // Use parameter name
-                } else {
-                    callArgs.push_back(argName);  // For now, treat as parameter
-                }
-            } else {
-                callArgs.push_back(argName);  // Will be bound later
-            }
-        } else {
-            callArgs.push_back(argName);  // Use parameter name
-        }
+    // Build function($a, $b, ...){ $name($a, $b, ...) } (Java lines 1947-1959)
+    std::string params;
+    for (size_t i = 0; i < nargs; i++) {
+        if (i > 0) params += ", ";
+        params += "$" + std::string(1, static_cast<char>('a' + i));
     }
-
-    // Build the body string (Java lines 1958-1959)
-    std::string body = "function(";
-    for (size_t i = 0; i < sigArgs.size(); i++) {
-        if (i > 0) body += ", ";
-        body += sigArgs[i];
-    }
-    body += "){$" + functionName + "(";
-    for (size_t i = 0; i < callArgs.size(); i++) {
-        if (i > 0) body += ", ";
-        body += callArgs[i];
-    }
-    body += ") }";
+    std::string body =
+        "function(" + params + "){$" + functionName + "(" + params + ") }";
 
     // Parse the body to create AST (Java line 1969)
     Parser parser;

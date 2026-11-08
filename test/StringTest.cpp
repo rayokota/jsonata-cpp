@@ -332,4 +332,190 @@ TEST_F(StringTest, DISABLED_replaceTest) {
     EXPECT_EQ(result.get<std::string>(), "http://example.org/test");
 }
 
+static nlohmann::ordered_json evalExpr(const std::string& expression) {
+    return Jsonata(expression).evaluate(nullptr);
+}
+
+static std::vector<int64_t> matchIndexes(const std::string& expression) {
+    std::vector<int64_t> indexes;
+    for (const auto& m : evalExpr(expression)) {
+        indexes.push_back(m["index"].get<int64_t>());
+    }
+    return indexes;
+}
+
+TEST_F(StringTest, matchLimit) {
+    EXPECT_EQ(matchIndexes("$match('ababab', /ab/)"),
+              (std::vector<int64_t>{0, 2, 4}));
+    EXPECT_TRUE(evalExpr("$match('ababab', /ab/, 0)").is_null());
+    EXPECT_EQ(evalExpr("$match('ababab', /ab/, 1)"),
+              nlohmann::ordered_json::parse(
+                  R"({"match": "ab", "index": 0, "groups": []})"));
+    EXPECT_EQ(matchIndexes("$match('ababab', /ab/, 2)"),
+              (std::vector<int64_t>{0, 2}));
+    EXPECT_EQ(matchIndexes("$match('ababab', /ab/, 5)"),
+              (std::vector<int64_t>{0, 2, 4}));
+}
+
+// With a limit of 0 the result is known in advance, so the input isn't
+// scanned for matches
+TEST_F(StringTest, matchZeroLimitSkipsMatcher) {
+    class CountingRegex : public IRegex {
+       public:
+        CountingRegex(std::shared_ptr<IRegex> regex, int& findAllCalls)
+            : regex_(std::move(regex)), findAllCalls_(findAllCalls) {}
+        bool test(const std::string& str) const override {
+            return regex_->test(str);
+        }
+        std::optional<RegexMatch> findFirst(const std::string& str,
+                                            size_t start) const override {
+            return regex_->findFirst(str, start);
+        }
+        std::vector<RegexMatch> findAll(const std::string& str) const override {
+            findAllCalls_++;
+            return regex_->findAll(str);
+        }
+        std::vector<std::string> split(const std::string& str) const override {
+            return regex_->split(str);
+        }
+
+       private:
+        std::shared_ptr<IRegex> regex_;
+        int& findAllCalls_;
+    };
+
+    int findAllCalls = 0;
+    RegexEngine engine = [&findAllCalls](const std::string& pattern,
+                                         const RegexFlags& flags) {
+        return std::make_shared<CountingRegex>(
+            defaultRegexEngine()(pattern, flags), findAllCalls);
+    };
+    EXPECT_TRUE(Jsonata("$match('ababab', /ab/, 0)", engine)
+                    .evaluate(nullptr)
+                    .is_null());
+    EXPECT_EQ(findAllCalls, 0);
+    EXPECT_EQ(Jsonata("$match('ababab', /ab/, 1)", engine)
+                  .evaluate(nullptr)["index"],
+              0);
+    EXPECT_EQ(findAllCalls, 1);
+}
+
+TEST_F(StringTest, matchFractionalLimit) {
+    EXPECT_EQ(matchIndexes("$match('ababab', /ab/, 4/2)"),
+              (std::vector<int64_t>{0, 2}));
+    // Like jsonata-js, matches are returned while the count is less than the
+    // limit
+    EXPECT_EQ(matchIndexes("$match('ababab', /ab/, 1.5)"),
+              (std::vector<int64_t>{0, 2}));
+}
+
+TEST_F(StringTest, matchLargeLimit) {
+    // INT64_MAX rounds up to 2^63 as a double, which doesn't fit in int64_t
+    auto input = nlohmann::ordered_json::parse(
+        R"({"limit": 9223372036854775807})");
+    auto result = Jsonata("$match('ababab', /ab/, limit)").evaluate(input);
+    ASSERT_EQ(result.size(), 3u);
+    EXPECT_EQ(Jsonata("$match('ababab', /ab/, 1e300)").evaluate(nullptr).size(),
+              3u);
+}
+
+TEST_F(StringTest, matchNegativeLimit) {
+    try {
+        evalExpr("$match('ababab', /ab/, -1)");
+        FAIL() << "Expected JException";
+    } catch (const JException& ex) {
+        EXPECT_EQ(ex.getError(), "D3040");
+    }
+}
+
+TEST_F(StringTest, partialApplicationWithMap) {
+    // Only ? placeholders are unbound, so $map doesn't pass the index as a
+    // trailing argument
+    EXPECT_EQ(evalExpr("$map(['abc', 'abc', 'abc'], $substring(?, 1))"),
+              nlohmann::ordered_json::parse(R"(["bc", "bc", "bc"])"));
+    EXPECT_EQ(evalExpr("$map(['ab', 'ab'], $match(?, /ab/)).match"),
+              nlohmann::ordered_json::parse(R"(["ab", "ab"])"));
+    EXPECT_EQ(evalExpr("$map(['ababab', 'ababab'], $match(?, /ab/)).index"),
+              nlohmann::ordered_json::parse(R"([0, 2, 4, 0, 2, 4])"));
+}
+
+TEST_F(StringTest, partialApplicationOfLambda) {
+    // An argument that isn't supplied is bound to undefined, not left as a
+    // parameter that $map would pass the index into
+    EXPECT_EQ(evalExpr("($f := function($a, $b){ [$a, $b] }; "
+                       "$map([1, 2], $f(?)))"),
+              nlohmann::ordered_json::parse(R"([[1], [2]])"));
+}
+
+TEST_F(StringTest, partialApplicationOfSignedLambda) {
+    // Like jsonata-js, the partial is not validated against the lambda's
+    // signature, which describes all of its parameters
+    EXPECT_EQ(evalExpr("($f := function($a, $b)<nn:n>{ $a }; "
+                       "$map([1, 2], $f(?)))"),
+              nlohmann::ordered_json::parse("[1, 2]"));
+    EXPECT_EQ(evalExpr("($f := function($a, $b)<nn:n>{ $a + $b }; "
+                       "$f(?, 2)(3))"),
+              nlohmann::ordered_json(5));
+    try {
+        evalExpr("($f := function($a, $b)<nn:n>{ $a + $b }; $f(?, 2)('a'))");
+        FAIL() << "Expected JException";
+    } catch (const JException& ex) {
+        EXPECT_EQ(ex.getError(), "T2001");
+    }
+}
+
+TEST_F(StringTest, partialApplicationOptionalArgs) {
+    // Trailing args that weren't supplied aren't passed to the native function
+    EXPECT_EQ(evalExpr("$sort(?)([3, 1, 2])"),
+              nlohmann::ordered_json::parse(R"([1, 2, 3])"));
+    EXPECT_EQ(evalExpr("$map([[3, 1, 2], [2, 1]], $sort(?))"),
+              nlohmann::ordered_json::parse(R"([[1, 2, 3], [1, 2]])"));
+}
+
+TEST_F(StringTest, undefinedArgs) {
+    EXPECT_EQ(evalExpr("$substring('abc', $nothing)"), "abc");
+    EXPECT_EQ(evalExpr("$substring('abc', $nothing, 1)"), "");
+    EXPECT_EQ(evalExpr("$substring(?, $nothing)('abc')"), "abc");
+    EXPECT_EQ(evalExpr("$substringBefore('abc', $nothing)"), "abc");
+    EXPECT_EQ(evalExpr("$substringAfter('abc', $nothing)"), "abc");
+    EXPECT_EQ(evalExpr("$pad('abc', $nothing)"), "abc");
+    EXPECT_TRUE(evalExpr("$contains('abc', $nothing)").is_null());
+    EXPECT_TRUE(evalExpr("$split('abc', $nothing)").is_null());
+    EXPECT_TRUE(evalExpr("$split('abc', $nothing, 1)").is_null());
+    EXPECT_TRUE(evalExpr("$replace('abc', $nothing, 'x')").is_null());
+    EXPECT_TRUE(evalExpr("'abc' ~> $replace($nothing, 'x')").is_null());
+    EXPECT_TRUE(evalExpr("'abc' ~> $split($nothing)").is_null());
+}
+
+TEST_F(StringTest, nullArgs) {
+    for (const char* expression :
+         {"$substring('abc', null)", "$substring('abc', 1, null)",
+          "$substring('abc', $nothing, null)", "$substring($nothing, null)",
+          "$substring($nothing, 1, null)", "$pad('abc', null)",
+          "$pad('abc', 5, null)", "$pad($nothing, null)",
+          "$substringBefore('abc', null)", "$substringBefore($nothing, null)",
+          "$substringAfter('abc', null)", "$substringAfter($nothing, null)",
+          "$contains('abc', null)", "$contains($nothing, null)",
+          "$split('abc', null)", "$split($nothing, null)",
+          "$replace('abc', null, 'x')", "$replace($nothing, null, 'x')"}) {
+        try {
+            evalExpr(expression);
+            ADD_FAILURE() << "Expected JException for " << expression;
+        } catch (const JException& ex) {
+            EXPECT_EQ(ex.getError(), "T0410") << expression;
+        }
+    }
+}
+
+TEST_F(StringTest, nullArgMessage) {
+    try {
+        evalExpr("$substring('abc', 1, null)");
+        FAIL() << "Expected JException";
+    } catch (const JException& ex) {
+        EXPECT_STREQ(ex.what(),
+                     "Argument 3 of Object substring does not match Object "
+                     "signature");
+    }
+}
+
 } // namespace jsonata

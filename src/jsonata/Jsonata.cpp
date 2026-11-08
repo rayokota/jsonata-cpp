@@ -4060,31 +4060,61 @@ std::any Jsonata::partialApplyNativeFunction(const std::any& native,
 namespace {
 
 // A native function is called without validating its signature, like in
-// jsonata-js, so it may get arguments it can't handle. Rather than let the
-// failed cast be swallowed (and the call return undefined), report it as a
-// signature error: validating the arguments now names the one that doesn't
-// match. The error names the native function, as the call site may be a
-// higher-order function such as $map.
-[[noreturn]] void throwNativeArgumentError(const JFunction& native,
-                                           const Utils::JList& args,
-                                           const std::any& input) {
-    std::any name;
+// jsonata-js, so it may get arguments it can't handle. When it fails, these
+// report the failure as a signature error if the arguments don't match the
+// signature. Signature errors name the native function, as the call site may
+// be a higher-order function such as $map.
+
+std::any nativeName(const JFunction& native) {
     if (native.signature && !native.signature->getFunctionName().empty()) {
-        name = native.signature->getFunctionName();
+        return native.signature->getFunctionName();
     }
-    if (native.signature) {
-        try {
-            native.signature->validate(args, input);
-        } catch (const JException& ex) {
-            if ((ex.getError() == "T0410" || ex.getError() == "T0412") &&
-                !ex.getExpected().has_value() && name.has_value()) {
-                throw JException(ex.getError(), ex.getLocation(),
-                                 ex.getCurrent(), name, ex.getExtra());
-            }
-            throw;
+    return std::any{};
+}
+
+bool isUnnamedSignatureError(const JException& ex) {
+    return (ex.getError() == "T0410" || ex.getError() == "T0412") &&
+           !ex.getExpected().has_value();
+}
+
+// Throws a signature error if the arguments don't match the signature
+void validateNativeArguments(const JFunction& native, const Utils::JList& args,
+                             const std::any& input) {
+    if (!native.signature) return;
+    try {
+        native.signature->validate(args, input);
+    } catch (const JException& ex) {
+        std::any name = nativeName(native);
+        if (isUnnamedSignatureError(ex) && name.has_value()) {
+            throw JException(ex.getError(), ex.getLocation(), ex.getCurrent(),
+                             name, ex.getExtra());
         }
+        throw;
     }
-    throw JException("T0410", -1, std::any{}, name);
+}
+
+// A failed cast would otherwise be swallowed, and the call return undefined
+[[noreturn]] void throwNativeCastError(const JFunction& native,
+                                       const Utils::JList& args,
+                                       const std::any& input) {
+    validateNativeArguments(native, args, input);
+    throw JException("T0410", -1, std::any{}, nativeName(native));
+}
+
+// An error raised by the native, such as D1001 for a string where a number is
+// expected, is replaced by a signature error if the arguments don't match;
+// otherwise it is a legitimate error of the native and is kept
+[[noreturn]] void throwNativeError(const JFunction& native,
+                                   const Utils::JList& args,
+                                   const std::any& input,
+                                   const JException& ex) {
+    validateNativeArguments(native, args, input);
+    std::any name = nativeName(native);
+    if (isUnnamedSignatureError(ex) && name.has_value()) {
+        throw JException(ex.getError(), ex.getLocation(), ex.getCurrent(),
+                         name, ex.getExtra());
+    }
+    throw ex;
 }
 
 }  // namespace
@@ -4105,7 +4135,9 @@ std::any Jsonata::applyNativeFunction(std::shared_ptr<Parser::Symbol> proc,
             try {
                 return jfunc.implementation(args, proc->input, env);
             } catch (const std::bad_any_cast&) {
-                throwNativeArgumentError(jfunc, args, proc->input);
+                throwNativeCastError(jfunc, args, proc->input);
+            } catch (const JException& ex) {
+                throwNativeError(jfunc, args, proc->input, ex);
             }
         }
     } else if (native.type() ==

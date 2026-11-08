@@ -97,6 +97,49 @@ TEST(PartialApplicationTest, argumentOfWrongType) {
     }
 }
 
+// An error the native raises for arguments that don't match its signature is
+// reported as a signature error, named after the native
+TEST(PartialApplicationTest, nativeErrorForWrongArguments) {
+    for (const char* expression :
+         {"$substring(?, 'x')('abc')", "$map(['abc'], $substring(?, 'x'))",
+          "$substring(?, null)('abc')", "$map(['abc'], $substring(?, null))"}) {
+        try {
+            eval(expression);
+            ADD_FAILURE() << "Expected JException for " << expression;
+        } catch (const JException& ex) {
+            EXPECT_EQ(ex.getError(), "T0410") << expression;
+            EXPECT_EQ(std::any_cast<std::string>(ex.getExpected()), "substring")
+                << expression;
+        }
+    }
+}
+
+// Errors of arguments that match the signature are kept
+TEST(PartialApplicationTest, nativeErrorForMatchingArguments) {
+    try {
+        eval("$match(?, /b/, -1)('abc')");
+        FAIL() << "Expected JException";
+    } catch (const JException& ex) {
+        EXPECT_EQ(ex.getError(), "D3040");
+    }
+}
+
+// An unnamed signature error of a function argument is named after the
+// native calling it, as when it is called directly
+TEST(PartialApplicationTest, functionArgumentError) {
+    for (const char* expression : {"$map(['a'], function($x)<n:n>{ $x })",
+                                   "$map(?, function($x)<n:n>{ $x })(['a'])"}) {
+        try {
+            eval(expression);
+            ADD_FAILURE() << "Expected JException for " << expression;
+        } catch (const JException& ex) {
+            EXPECT_EQ(ex.getError(), "T0410") << expression;
+            EXPECT_EQ(std::any_cast<std::string>(ex.getExpected()), "map")
+                << expression;
+        }
+    }
+}
+
 TEST(PartialApplicationTest, missingArgsBound) {
     EXPECT_EQ(eval("$substring(?, 1)('hello')"), "ello");
 }

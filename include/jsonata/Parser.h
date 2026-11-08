@@ -135,8 +135,14 @@ class Parser {
         std::shared_ptr<JException> error;
 
         // Partial application support (matching Java implementation)
-        std::any nativeFunction;            // For partialApplyNativeFunction
-        std::vector<std::any> partialArgs;  // For partialApplyNativeFunction
+        // The native function a partially applied native wraps. When set,
+        // applying this lambda calls it with the values bound to
+        // nativeParams instead of evaluating `body` (jsonata-js: body =
+        // native).
+        std::any nativeFunction;
+        // All parameter names of the native wrapper, in order, including the
+        // ones bound by the partial application
+        std::vector<std::string> nativeParams;
 
         // Constructors
         Symbol() = default;

@@ -114,9 +114,11 @@ if(JSONATA_BUILD_TESTS)
         test/DateTimeTest.cpp
         test/ErrorMessageTest.cpp
         test/FrameLifetimeTest.cpp
+        test/FunctionNameTest.cpp
         test/NullSafetyTest.cpp
         test/NumberTestSimplified.cpp
         test/ParseIntegerTest.cpp
+        test/PartialApplicationTest.cpp
         test/SerializationTest.cpp
         test/SignatureTest.cpp
         test/StringTest.cpp

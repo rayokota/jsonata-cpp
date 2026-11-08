@@ -380,8 +380,9 @@ std::string JException::generateMessage(const std::string& error,
         return message;
     }
 
-    // Replace each {{var}} or {{{var}}} with the next argument, in order. A
-    // placeholder with no argument is left as is.
+    // Replace each {{var}} or {{{var}}} with the next argument, in order.
+    // Like jsonata-js, a placeholder with no argument reads "undefined" (e.g. a
+    // signature error for a function that wasn't called by name).
     std::string formatted;
     try {
         static const std::regex placeholder(
@@ -395,7 +396,7 @@ std::string JException::generateMessage(const std::string& error,
             if (next < args.size() && args[next].has_value()) {
                 formatted += argToString(args[next]);
             } else {
-                formatted += m->str();
+                formatted += "undefined";
             }
             next++;
             last = m->position() + m->length();

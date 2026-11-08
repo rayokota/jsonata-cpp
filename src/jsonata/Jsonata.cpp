@@ -155,6 +155,23 @@ class FrameRegistry {
 // or null if there is none.
 thread_local FrameRegistry* currentFrameRegistry = nullptr;
 
+// The name a function was called by: the variable it is bound to (its
+// registered name, if it is registered), or undefined if it wasn't called by
+// name
+std::any callName(const std::shared_ptr<Parser::Symbol>& expr) {
+    if (expr->procedure->type == "variable") {
+        return expr->procedure->value;
+    }
+    if (expr->procedure->type == "path" && !expr->procedure->steps.empty()) {
+        return expr->procedure->steps[0]->value;
+    }
+    return std::any{};
+}
+
+// The number of functions applied on this thread, which tells whether a native
+// function called back into JSONata (see Jsonata::applyNativeFunction)
+thread_local uint64_t applyCount = 0;
+
 // Covers one top-level evaluate() call. While it is alive, frames created by
 // createEvaluationFrame() are recorded; when it is destroyed, by a return or
 // an exception, their bindings are cleared and the thread-local evaluation
@@ -779,8 +796,23 @@ std::any Jsonata::evaluateFunctionWithContext(
             throw JException("T1006", expr->position, procName);
         }
 
+    } catch (const JException& ex) {
+        // Like jsonata-js, name a signature error by the name the function
+        // was called by: its registered name or the variable it is bound to.
+        // An error that already names a function (e.g. from a nested call)
+        // is left as is.
+        if ((ex.getError() == "T0410" || ex.getError() == "T0412") &&
+            !ex.getExpected().has_value()) {
+            std::any name = callName(expr);
+            if (name.has_value()) {
+                throw JException(ex.getError(), ex.getLocation(),
+                                 ex.getCurrent(), name, ex.getExtra());
+            }
+        }
+        throw;
     } catch (const std::bad_any_cast&) {
-        throw JException("T0410", expr->position, "Function evaluation error");
+        // a function that couldn't convert its arguments
+        throw JException("T0410", expr->position, std::any{}, callName(expr));
     }
 }
 
@@ -2699,6 +2731,7 @@ std::any Jsonata::apply(const std::any& proc, const Utils::JList& args,
                         const std::any& input,
                         std::shared_ptr<Frame> environment) {
     // Java reference implementation: Jsonata.java lines 1674-1695
+    applyCount++;
     auto result = applyInner(proc, args, input, environment);
 
     // Trampoline loop - this gets invoked as a result of tail-call optimization
@@ -2894,13 +2927,18 @@ Utils::JList Jsonata::validateArguments(const std::any& signature,
             if (symbol && !symbol->signature.empty()) {
                 // Create Signature object and validate
                 try {
-                    utils::Signature sig(symbol->signature, "lambda");
+                    // the name reported in signature errors is taken from
+                    // the call site
+                    utils::Signature sig(symbol->signature, "");
                     validatedArgs = sig.validate(args, context);
                     // Debug: check if validation is working correctly
                     if (args.size() != validatedArgs.size()) {
                         // This is expected for optional parameters - args
                         // should be expanded
                     }
+                } catch (const JException&) {
+                    // A signature error, e.g. T0410
+                    throw;
                 } catch (const std::exception& e) {
                     // If signature construction fails, rethrow to see the error
                     throw std::runtime_error(
@@ -3293,6 +3331,12 @@ std::any Jsonata::applyProcedure(const std::any& _proc,
                     // Skip if not a string value
                 }
             }
+        }
+
+        // A lambda that wraps a native function, created by partially
+        // applying it
+        if (symbol->nativeFunction.has_value()) {
+            return applyNativeFunction(symbol, env);
         }
 
         // Java lines 1892-1894: evaluate the body
@@ -3920,16 +3964,7 @@ std::any Jsonata::evaluatePartialApplication(
             evaluatedArgs);
     } else if (Utils::isFunction(proc)) {
         // Java line 1845: partialApplyNativeFunction
-        // Get function name from the procedure expression
-        std::string functionName;
-        if (expr->procedure && expr->procedure->type == "path" &&
-            !expr->procedure->steps.empty()) {
-            functionName =
-                std::any_cast<std::string>(expr->procedure->steps[0]->value);
-        } else if (expr->procedure && expr->procedure->value.has_value()) {
-            functionName = std::any_cast<std::string>(expr->procedure->value);
-        }
-        result = partialApplyNativeFunction(proc, evaluatedArgs, functionName);
+        result = partialApplyNativeFunction(proc, evaluatedArgs);
     } else {
         // Java lines 1849-1854
         std::string procName = "unknown";
@@ -3991,6 +4026,8 @@ std::any Jsonata::partialApplyProcedure(std::shared_ptr<Parser::Symbol> proc,
     procedure->environment = env;
     procedure->arguments = unboundArgs;
     procedure->body = proc->body;
+    procedure->nativeFunction = proc->nativeFunction;
+    procedure->nativeParams = proc->nativeParams;
     // Like jsonata-js, the partial has no signature: the original signature
     // describes all of the parameters, while the partial only takes the ones
     // left unbound
@@ -3999,40 +4036,155 @@ std::any Jsonata::partialApplyProcedure(std::shared_ptr<Parser::Symbol> proc,
 }
 
 std::any Jsonata::partialApplyNativeFunction(const std::any& native,
-                                             const Utils::JList& args,
-                                             const std::string& functionName) {
-    // Following Java implementation: Jsonata.java lines 1939-1974
-    // Create a lambda function that wraps and invokes the native function
+                                             const Utils::JList& args) {
+    // Like jsonata-js: create a lambda function($p0, $p1, ...){ _ } whose body
+    // is the native function itself. Applying it calls the native directly
+    // (see applyNativeFunction), so the function isn't looked up by name and
+    // its signature isn't validated again.
 
-    // Leave out trailing arguments that weren't supplied, so the native
-    // function is called without them and optional parameters aren't
-    // validated against undefined. A function without a signature is passed
-    // the arguments it was given.
+    // Like jsonata-js, every declared parameter gets a slot, so parameters
+    // that weren't supplied are passed as undefined. A function without a
+    // signature is passed the arguments it was given.
     size_t nargs = args.size();
     if (native.type() == typeid(JFunction)) {
         const auto& jfunc = std::any_cast<const JFunction&>(native);
         if (jfunc.signature) {
-            nargs = std::min(
-                nargs, static_cast<size_t>(jfunc.signature->getNumberOfArgs()));
+            nargs = static_cast<size_t>(jfunc.signature->getNumberOfArgs());
         }
     }
 
-    // Build function($a, $b, ...){ $name($a, $b, ...) } (Java lines 1947-1959)
+    std::vector<std::string> paramNames;
     std::string params;
     for (size_t i = 0; i < nargs; i++) {
+        paramNames.push_back("p" + std::to_string(i));
         if (i > 0) params += ", ";
-        params += "$" + std::string(1, static_cast<char>('a' + i));
+        params += "$" + paramNames.back();
     }
-    std::string body =
-        "function(" + params + "){$" + functionName + "(" + params + ") }";
+    std::string body = "function(" + params + "){ _ }";
 
-    // Parse the body to create AST (Java line 1969)
     Parser parser;
     auto bodyAST = parser.parse(body);
+    bodyAST->nativeFunction = native;
+    bodyAST->nativeParams = paramNames;
 
-    // Use partialApplyProcedure with the parsed body (Java line 1972)
-    return partialApplyProcedure(
-        std::any_cast<std::shared_ptr<Parser::Symbol>>(bodyAST), args);
+    return partialApplyProcedure(bodyAST, args);
+}
+
+namespace {
+
+// A native function is called without validating its signature, like in
+// jsonata-js, so it may get arguments it can't handle. When it fails, these
+// report the failure as a signature error if the arguments don't match the
+// signature. Signature errors name the native function, as the call site may
+// be a higher-order function such as $map.
+
+std::any nativeName(const JFunction& native) {
+    if (native.signature && !native.signature->getFunctionName().empty()) {
+        return native.signature->getFunctionName();
+    }
+    return std::any{};
+}
+
+bool isUnnamedSignatureError(const JException& ex) {
+    return (ex.getError() == "T0410" || ex.getError() == "T0412") &&
+           !ex.getExpected().has_value();
+}
+
+// Throws a signature error if the arguments don't match the signature
+void validateNativeArguments(const JFunction& native, const Utils::JList& args,
+                             const std::any& input) {
+    if (!native.signature) return;
+    // validate the arguments as supplied, without the slots of omitted
+    // parameters
+    Utils::JList supplied = args;
+    while (!supplied.empty() && !supplied.back().has_value()) {
+        supplied.pop_back();
+    }
+    try {
+        native.signature->validate(supplied, input);
+    } catch (const JException& ex) {
+        std::any name = nativeName(native);
+        if (isUnnamedSignatureError(ex) && name.has_value()) {
+            throw JException(ex.getError(), ex.getLocation(), ex.getCurrent(),
+                             name, ex.getExtra());
+        }
+        throw;
+    }
+}
+
+// A failed cast would otherwise be swallowed, and the call return undefined.
+// calledBack tells whether the native called a function, such as the function
+// argument of $map, which may have raised the error instead.
+[[noreturn]] void throwNativeCastError(const JFunction& native,
+                                       const Utils::JList& args,
+                                       const std::any& input,
+                                       bool calledBack) {
+    if (!calledBack) {
+        validateNativeArguments(native, args, input);
+    }
+    throw JException("T0410", -1, std::any{}, nativeName(native));
+}
+
+// An error raised by the native, such as D1001 for a string where a number is
+// expected, is replaced by a signature error if the arguments don't match;
+// otherwise it is a legitimate error of the native and is kept. An error
+// raised by a function the native called (calledBack) is not an error of the
+// native's own arguments, so it is kept too. Either way an unnamed signature
+// error is named after the native, as in a direct call.
+[[noreturn]] void throwNativeError(const JFunction& native,
+                                   const Utils::JList& args,
+                                   const std::any& input,
+                                   const JException& ex, bool calledBack) {
+    if (!calledBack) {
+        validateNativeArguments(native, args, input);
+    }
+    std::any name = nativeName(native);
+    if (isUnnamedSignatureError(ex) && name.has_value()) {
+        throw JException(ex.getError(), ex.getLocation(), ex.getCurrent(),
+                         name, ex.getExtra());
+    }
+    throw ex;
+}
+
+}  // namespace
+
+std::any Jsonata::applyNativeFunction(std::shared_ptr<Parser::Symbol> proc,
+                                      std::shared_ptr<Frame> env) {
+    // Like jsonata-js: look up the arguments in the environment and call the
+    // native function with them, without validating its signature
+    Utils::JList args;
+    for (const auto& param : proc->nativeParams) {
+        args.push_back(env->lookup(param));
+    }
+
+    const std::any& native = proc->nativeFunction;
+    if (native.type() == typeid(JFunction)) {
+        const auto& jfunc = std::any_cast<const JFunction&>(native);
+        if (jfunc.implementation) {
+            uint64_t applies = applyCount;
+            try {
+                return jfunc.implementation(args, proc->input, env);
+            } catch (const std::bad_any_cast&) {
+                throwNativeCastError(jfunc, args, proc->input,
+                                     applyCount != applies);
+            } catch (const JException& ex) {
+                throwNativeError(jfunc, args, proc->input, ex,
+                                 applyCount != applies);
+            }
+        }
+    } else if (native.type() ==
+               typeid(std::function<std::any(const std::vector<std::any>&)>)) {
+        try {
+            return std::any_cast<
+                const std::function<std::any(const std::vector<std::any>&)>&>(
+                native)(std::vector<std::any>(args.begin(), args.end()));
+        } catch (const std::bad_any_cast&) {
+            throw JException("T0410", -1);
+        }
+    } else if (native.type() == typeid(std::function<std::any()>)) {
+        return std::any_cast<const std::function<std::any()>&>(native)();
+    }
+    return std::any{};
 }
 
 }  // namespace jsonata

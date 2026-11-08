@@ -18,6 +18,7 @@
  */
 #include "jsonata/JException.h"
 
+#include <iomanip>
 #include <nlohmann/json.hpp>
 #include <regex>
 #include <sstream>
@@ -246,6 +247,42 @@ std::unordered_map<std::string, std::string> errorCodes = {
     {"D3140", "Malformed URL passed to ${{{functionName}}}(): {{value}}"},
     {"D3141", "{{{message}}}"}};
 
+namespace {
+
+// Renders a message argument the way it appears in an error message
+std::string argToString(const std::any& arg) {
+    if (!arg.has_value()) {
+        return "null";
+    }
+    const std::type_info& type = arg.type();
+    if (type == typeid(std::string)) {
+        return std::any_cast<std::string>(arg);
+    }
+    if (type == typeid(const char*)) {
+        return std::any_cast<const char*>(arg);
+    }
+    if (type == typeid(double)) {
+        std::ostringstream oss;
+        oss << std::setprecision(15) << std::any_cast<double>(arg);
+        return oss.str();
+    }
+    if (type == typeid(int64_t)) {
+        return std::to_string(std::any_cast<int64_t>(arg));
+    }
+    if (type == typeid(uint64_t)) {
+        return std::to_string(std::any_cast<uint64_t>(arg));
+    }
+    if (type == typeid(int)) {
+        return std::to_string(std::any_cast<int>(arg));
+    }
+    if (type == typeid(bool)) {
+        return std::any_cast<bool>(arg) ? "true" : "false";
+    }
+    return "[object]";
+}
+
+}  // namespace
+
 JException::JException(const std::string& error)
     : JException(error, -1, std::any{}, std::any{}) {}
 
@@ -258,18 +295,24 @@ JException::JException(const std::string& error, int64_t location,
 
 JException::JException(const std::string& error, int64_t location,
                        const std::any& currentToken, const std::any& expected)
-    : std::runtime_error(
-          generateMessage(error, location, currentToken, expected)),
+    : JException(error, location, currentToken, expected, std::any{}) {}
+
+JException::JException(const std::string& error, int64_t location,
+                       const std::any& currentToken, const std::any& expected,
+                       const std::any& extra)
+    : std::runtime_error(generateMessage(
+          error, location, {currentToken, expected, extra}, false)),
       error_(error),
       location_(location),
       current_(currentToken),
-      expected_(expected) {}
+      expected_(expected),
+      extra_(extra) {}
 
 JException::JException(const std::exception& cause, const std::string& error,
                        int64_t location, const std::any& currentToken,
                        const std::any& expected)
     : std::runtime_error(
-          generateMessage(error, location, currentToken, expected)),
+          generateMessage(error, location, {currentToken, expected}, false)),
       error_(error),
       location_(location),
       current_(currentToken),
@@ -286,8 +329,10 @@ const std::any& JException::getCurrent() const { return current_; }
 
 const std::any& JException::getExpected() const { return expected_; }
 
+const std::any& JException::getExtra() const { return extra_; }
+
 std::string JException::getDetailedErrorMessage() const {
-    return msg(error_, location_, current_, expected_, true);
+    return msg(error_, location_, current_, expected_, extra_, true);
 }
 
 std::string JException::msg(const std::string& error, int64_t location,
@@ -298,119 +343,66 @@ std::string JException::msg(const std::string& error, int64_t location,
 std::string JException::msg(const std::string& error, int64_t location,
                             const std::any& arg1, const std::any& arg2,
                             bool details) {
-    return generateMessage(error, location, arg1, arg2, details);
+    return generateMessage(error, location, {arg1, arg2}, details);
 }
 
-std::string JException::generateMessage(const std::string& error, int64_t location,
-                                        const std::any& arg1,
-                                        const std::any& arg2, bool details) {
-    // Try to find the error message in the error codes map
-    std::string message;
+std::string JException::msg(const std::string& error, int64_t location,
+                            const std::any& arg1, const std::any& arg2,
+                            const std::any& arg3, bool details) {
+    return generateMessage(error, location, {arg1, arg2, arg3}, details);
+}
 
-    // For now, we'll use a simple fallback until errorCodes is available
+std::string JException::generateMessage(const std::string& error,
+                                        int64_t location,
+                                        const std::vector<std::any>& args,
+                                        bool details) {
     auto it = errorCodes.find(error);
-    if (it != errorCodes.end()) {
-        message = it->second;
-    } else {
+    if (it == errorCodes.end()) {
         // Unknown error code fallback
         std::ostringstream oss;
         oss << "JSONataException " << error;
         if (details) {
-            oss << " {code=unknown position=" << location << " arg1=";
-            // Convert std::any to string representation
-            try {
-                if (arg1.has_value()) {
-                    if (arg1.type() == typeid(std::string)) {
-                        oss << std::any_cast<std::string>(arg1);
-                    } else if (arg1.type() == typeid(double)) {
-                        oss << std::any_cast<double>(arg1);
-                    } else if (arg1.type() == typeid(int64_t)) {
-                        oss << std::any_cast<int64_t>(arg1);
-                    } else if (arg1.type() == typeid(uint64_t)) {
-                        oss << std::any_cast<uint64_t>(arg1);
-                    } else {
-                        oss << "[object]";
-                    }
-                } else {
-                    oss << "null";
-                }
-                oss << " arg2=";
-                if (arg2.has_value()) {
-                    if (arg2.type() == typeid(std::string)) {
-                        oss << std::any_cast<std::string>(arg2);
-                    } else if (arg2.type() == typeid(double)) {
-                        oss << std::any_cast<double>(arg2);
-                    } else if (arg2.type() == typeid(int64_t)) {
-                        oss << std::any_cast<int64_t>(arg2);
-                    } else if (arg2.type() == typeid(uint64_t)) {
-                        oss << std::any_cast<uint64_t>(arg2);
-                    } else {
-                        oss << "[object]";
-                    }
-                } else {
-                    oss << "null";
-                }
-                oss << "}";
-            } catch (const std::bad_any_cast&) {
-                oss << "[unknown] arg2=[unknown]}";
-            }
+            oss << " {code=unknown position=" << location
+                << " arg1=" << (args.size() > 0 ? argToString(args[0]) : "null")
+                << " arg2=" << (args.size() > 1 ? argToString(args[1]) : "null")
+                << "}";
         }
         return oss.str();
     }
 
-    std::string formatted = message;
+    const std::string& message = it->second;
 
-    if (formatted == "{{{message}}}") {
-        if (arg1.has_value() && arg1.type() == typeid(std::string)) {
-            return std::any_cast<std::string>(arg1);
+    if (message == "{{{message}}}") {
+        if (!args.empty() && args[0].has_value() &&
+            args[0].type() == typeid(std::string)) {
+            return std::any_cast<std::string>(args[0]);
         }
-        return formatted;
+        return message;
     }
 
+    // Replace each {{var}} with the next argument, in order. A placeholder
+    // with no argument is left as is.
+    std::string formatted;
     try {
-        // Replace any {{var}} with the actual argument values
-        std::regex pattern1(R"(\{\{\w+\}\})");
-
-        // Replace first placeholder with arg1
-        if (arg1.has_value()) {
-            std::string replacement1;
-            if (arg1.type() == typeid(std::string)) {
-                replacement1 = std::any_cast<std::string>(arg1);
-            } else if (arg1.type() == typeid(double)) {
-                replacement1 = std::to_string(std::any_cast<double>(arg1));
-            } else if (arg1.type() == typeid(int64_t)) {
-                replacement1 = std::to_string(std::any_cast<int64_t>(arg1));
-            } else if (arg1.type() == typeid(uint64_t)) {
-                replacement1 = std::to_string(std::any_cast<uint64_t>(arg1));
+        static const std::regex placeholder(R"(\{\{\w+\}\})");
+        size_t next = 0;
+        size_t last = 0;
+        for (std::sregex_iterator m(message.begin(), message.end(), placeholder),
+             end;
+             m != end; ++m) {
+            formatted.append(message, last, m->position() - last);
+            if (next < args.size() && args[next].has_value()) {
+                formatted += argToString(args[next]);
             } else {
-                replacement1 = "[object]";
+                formatted += m->str();
             }
-            formatted =
-                std::regex_replace(formatted, pattern1, replacement1,
-                                   std::regex_constants::format_first_only);
+            next++;
+            last = m->position() + m->length();
         }
-
-        // Replace second placeholder with arg2
-        if (arg2.has_value()) {
-            std::string replacement2;
-            if (arg2.type() == typeid(std::string)) {
-                replacement2 = std::any_cast<std::string>(arg2);
-            } else if (arg2.type() == typeid(double)) {
-                replacement2 = std::to_string(std::any_cast<double>(arg2));
-            } else if (arg2.type() == typeid(int64_t)) {
-                replacement2 = std::to_string(std::any_cast<double>(arg2));
-            } else if (arg2.type() == typeid(uint64_t)) {
-                replacement2 = std::to_string(std::any_cast<double>(arg2));
-            } else {
-                replacement2 = "[object]";
-            }
-            formatted =
-                std::regex_replace(formatted, pattern1, replacement2,
-                                   std::regex_constants::format_first_only);
-        }
-
+        formatted.append(message, last, std::string::npos);
     } catch (...) {
-        // Ignore formatting errors for now
+        // Ignore formatting errors
+        formatted = message;
     }
 
     if (details) {

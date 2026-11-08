@@ -151,6 +151,12 @@ class Parser {
         virtual ~Symbol() = default;
 
         std::string toString() const;
+
+        // Copies the whole subtree rooted at this node, so that processing
+        // the copy cannot change the original. Only the base Symbol state is
+        // copied (all that is needed once parsing is finished), and leaf
+        // values such as compiled regular expressions are shared.
+        std::shared_ptr<Symbol> deepClone() const;
     };
 
     // Specific symbol types

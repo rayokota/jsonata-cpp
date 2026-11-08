@@ -492,12 +492,13 @@ Utils::JList Signature::validate(const Utils::JList &args,
                                 }
                             }
                             if (!arrayOK) {
-                                // Java reference: lines 373-377 - throw
-                                // JException with T0412 code Java passes: arg
-                                // (actual argument), param.subtype (expected
-                                // subtype)
-                                throw JException("T0412", -1, arg,
-                                                 param.subtype);
+                                // The message has three placeholders:
+                                // the 1-based argument index, the function
+                                // name and the expected item type
+                                throw JException(
+                                    "T0412", -1,
+                                    static_cast<int64_t>(argIndex + 1),
+                                    functionName_, param.subtype);
                             }
                             // the function expects an array. If it's not one,
                             // make it so

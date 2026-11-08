@@ -60,6 +60,18 @@ static inline bool isBoolean(const std::any& value) {
 static inline bool isNull(const std::any& value) {
     return Utils::isNull(value);
 }
+// Throws T0410 if any of the first `count` arguments is a JSON null. Like
+// jsonata-js, this is checked before undefined arguments are handled, so
+// e.g. $substring($nothing, null) is an error.
+static void rejectNullArgs(const Utils::JList& args, size_t count,
+                           const std::string& functionName) {
+    for (size_t i = 0; i < count && i < args.size(); i++) {
+        if (Utils::isNullValue(args[i])) {
+            throw JException("T0410", -1, std::to_string(i + 1), functionName);
+        }
+    }
+}
+
 static inline std::optional<std::string> type(const std::any& value) {
     return Utils::type(value);
 }
@@ -925,18 +937,22 @@ Functions::getFunctionRegistry() {
             {"substring",
              FunctionEntry(
                  [](const Utils::JList& args) -> std::any {
-                     // Java reference: undefined inputs always return undefined
-                     if (args.size() < 2 || !args[0].has_value() ||
-                         !args[1].has_value()) {
-                         return std::any{};  // Return undefined
-                     }
+                     rejectNullArgs(args, 3, "substring");
 
-                     // JSON null literal should trigger signature validation error
-                     if (Utils::isNullValue(args[0])) {
-                         throw JException("T0410", -1, "substring");
+                     // undefined inputs always return undefined
+                     if (args.empty() || !args[0].has_value()) {
+                         return std::any{};
                      }
 
                      auto str = std::any_cast<std::string>(args[0]);
+
+                     // Like jsonata-js, an undefined start returns the whole
+                     // string, or "" if a length is given
+                     if (args.size() < 2 || !args[1].has_value()) {
+                         bool hasLength = args.size() >= 3 && args[2].has_value();
+                         return std::any(hasLength ? std::string() : str);
+                     }
+
                      int64_t start = Utils::toLong(args[1]);
                      std::optional<int64_t> length =
                          (args.size() >= 3 && isNumber(args[2]))
@@ -950,21 +966,20 @@ Functions::getFunctionRegistry() {
             {"substringBefore",
              FunctionEntry(
                  [](const Utils::JList& args) -> std::any {
-                     // Java reference: undefined inputs always return undefined
-                     if (args.size() < 2 || !args[0].has_value() ||
-                         !args[1].has_value()) {
-                         return std::any{};  // Return undefined
-                     }
+                     rejectNullArgs(args, 2, "substringBefore");
 
-                     // JSON null literal should trigger signature validation error
-                     if (Utils::isNullValue(args[0])) {
-                         throw JException("T0410", -1, "substringBefore");
-                     }
-                     if (Utils::isNullValue(args[1])) {
-                         throw JException("T0410", -1, "substringBefore");
+                     // undefined inputs always return undefined
+                     if (args.empty() || !args[0].has_value()) {
+                         return std::any{};
                      }
 
                      auto str = std::any_cast<std::string>(args[0]);
+
+                     // Like jsonata-js, undefined chars return the string
+                     // unchanged
+                     if (args.size() < 2 || !args[1].has_value()) {
+                         return std::any(str);
+                     }
                      auto chars = std::any_cast<std::string>(args[1]);
                      auto result = substringBefore(str, chars);
                      return result ? std::any(*result) : std::any();
@@ -974,21 +989,20 @@ Functions::getFunctionRegistry() {
             {"substringAfter",
              FunctionEntry(
                  [](const Utils::JList& args) -> std::any {
-                     // Java reference: undefined inputs always return undefined
-                     if (args.size() < 2 || !args[0].has_value() ||
-                         !args[1].has_value()) {
-                         return std::any{};  // Return undefined
-                     }
+                     rejectNullArgs(args, 2, "substringAfter");
 
-                     // JSON null literal should trigger signature validation error
-                     if (Utils::isNullValue(args[0])) {
-                         throw JException("T0410", -1, "substringAfter");
-                     }
-                     if (Utils::isNullValue(args[1])) {
-                         throw JException("T0410", -1, "substringAfter");
+                     // undefined inputs always return undefined
+                     if (args.empty() || !args[0].has_value()) {
+                         return std::any{};
                      }
 
                      auto str = std::any_cast<std::string>(args[0]);
+
+                     // Like jsonata-js, undefined chars return the string
+                     // unchanged
+                     if (args.size() < 2 || !args[1].has_value()) {
+                         return std::any(str);
+                     }
                      auto chars = std::any_cast<std::string>(args[1]);
                      auto result = substringAfter(str, chars);
                      return result ? std::any(*result) : std::any();
@@ -1066,10 +1080,14 @@ Functions::getFunctionRegistry() {
 
             {"pad", FunctionEntry(
                         [](const Utils::JList& args) -> std::any {
-                            if (args.size() < 2 || !isString(args[0]) ||
-                                !isNumber(args[1]))
+                            rejectNullArgs(args, 3, "pad");
+                            if (args.empty() || !isString(args[0]))
                                 return std::any();
                             auto str = std::any_cast<std::string>(args[0]);
+                            // Like jsonata-js, an undefined width adds no
+                            // padding
+                            if (args.size() < 2 || !isNumber(args[1]))
+                                return std::any(str);
                             int64_t width = Utils::toLong(args[1]);
                             std::string padStr =
                                 (args.size() >= 3 && isString(args[2]))
@@ -1086,9 +1104,17 @@ Functions::getFunctionRegistry() {
                      if (args.size() < 2 || !isString(args[0]))
                          return std::any();
                      auto str = std::any_cast<std::string>(args[0]);
-                     int64_t limit = (args.size() >= 3 && isNumber(args[2]))
-                                     ? Utils::toLong(args[2])
-                                     : -1;
+                     // Like jsonata-js, matches are returned while their
+                     // count is less than the limit, so a fractional limit
+                     // rounds up. No limit (-1) returns every match.
+                     int64_t limit = -1;
+                     if (args.size() >= 3 && isNumber(args[2])) {
+                         double limitValue = Utils::toDouble(args[2]);
+                         if (limitValue < 0) {
+                             throw JException("D3040", -1, args[2]);
+                         }
+                         limit = static_cast<int64_t>(std::ceil(limitValue));
+                     }
 
                      // Handle both string and regex patterns (matching Java
                      // implementation)
@@ -1125,12 +1151,18 @@ Functions::getFunctionRegistry() {
                      // Java reference line 686: public static Boolean
                      // contains(String str, Object token) Java reference line
                      // 688-690: undefined inputs always return undefined
-                     if (args.size() < 2) return std::any();
+                     // A null string returns undefined (as before); a null
+                     // pattern is an error
+                     if (args.size() >= 2 && Utils::isNullValue(args[1])) {
+                         throw JException("T0410", -1, std::string("2"),
+                                          std::string("contains"));
+                     }
 
-                     // Check for null first argument - should return null like
-                     // Java reference
-                     if (!args[0].has_value()) {
-                         return std::any();  // Return null like Java reference
+                     // undefined inputs (including the pattern) return
+                     // undefined
+                     if (args.size() < 2 || !args[0].has_value() ||
+                         !args[1].has_value()) {
+                         return std::any();
                      }
 
                      if (!isString(args[0])) return std::any();
@@ -1143,7 +1175,14 @@ Functions::getFunctionRegistry() {
             {"replace",
              FunctionEntry(
                  [](const Utils::JList& args) -> std::any {
-                     if (args.size() < 3 || !isString(args[0]))
+                     rejectNullArgs(args, 2, "replace");
+
+                     // undefined inputs (including the pattern) return
+                     // undefined
+                     if (args.size() < 2 || !args[1].has_value() ||
+                         !isString(args[0]))
+                         return std::any();
+                     if (args.size() < 3)
                          return std::any();
                      auto str = std::any_cast<std::string>(args[0]);
 
@@ -1168,7 +1207,12 @@ Functions::getFunctionRegistry() {
             {"split",
              FunctionEntry(
                  [](const Utils::JList& args) -> std::any {
-                     if (args.size() < 2 || !isString(args[0]))
+                     rejectNullArgs(args, 2, "split");
+
+                     // undefined inputs (including the pattern) return
+                     // undefined
+                     if (args.size() < 2 || !args[1].has_value() ||
+                         !isString(args[0]))
                          return std::any();
                      auto str = std::any_cast<std::string>(args[0]);
 
@@ -5023,7 +5067,8 @@ Utils::JList Functions::match(const std::string& str,
                               const std::shared_ptr<IRegex>& pattern,
                               int64_t limit) {
     auto matches = evaluateMatcher(pattern, str);
-    if (limit > 0 && matches.size() > static_cast<size_t>(limit)) {
+    // A negative limit means no limit; a limit of 0 returns no matches
+    if (limit >= 0 && matches.size() > static_cast<size_t>(limit)) {
         matches.resize(limit);
     }
     return matches;

@@ -152,6 +152,23 @@ TEST(PartialApplicationTest, customFunctionWithoutSignature) {
     EXPECT_EQ(expression.evaluate(nullptr), ordered_json(6));
 }
 
+// Like a direct call, the partial passes every declared parameter, omitted
+// ones as undefined
+TEST(PartialApplicationTest, customFunctionOptionalArgs) {
+    JFunction f([](const Utils::JList& args, const std::any&,
+                   std::shared_ptr<Frame>) -> std::any {
+        return std::string(args.size() == 2 && !args[1].has_value()
+                               ? "omitted"
+                               : "size " + std::to_string(args.size()));
+    });
+    f.signature = std::make_shared<utils::Signature>("<nn?:s>", "f");
+    for (const char* expression : {"$f(5)", "$f(?)(5)", "$map([5], $f(?))"}) {
+        Jsonata expr(expression);
+        expr.registerFunction("f", f);
+        EXPECT_EQ(expr.evaluate(nullptr), ordered_json("omitted")) << expression;
+    }
+}
+
 TEST(PartialApplicationTest, stdFunctionWithoutSignature) {
     Jsonata expression("$add(1, 2) ~> $add(?, 3)");
     expression.registerFunction(

@@ -4029,15 +4029,14 @@ std::any Jsonata::partialApplyNativeFunction(const std::any& native,
     // (see applyNativeFunction), so the function isn't looked up by name and
     // its signature isn't validated again.
 
-    // Leave out trailing arguments that weren't supplied, so the native
-    // function is called without them. A function without a signature is
-    // passed the arguments it was given.
+    // Like jsonata-js, every declared parameter gets a slot, so parameters
+    // that weren't supplied are passed as undefined. A function without a
+    // signature is passed the arguments it was given.
     size_t nargs = args.size();
     if (native.type() == typeid(JFunction)) {
         const auto& jfunc = std::any_cast<const JFunction&>(native);
         if (jfunc.signature) {
-            nargs = std::min(
-                nargs, static_cast<size_t>(jfunc.signature->getNumberOfArgs()));
+            nargs = static_cast<size_t>(jfunc.signature->getNumberOfArgs());
         }
     }
 

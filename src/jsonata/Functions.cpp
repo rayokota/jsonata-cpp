@@ -5070,9 +5070,12 @@ Utils::JList Functions::evaluateMatcher(const std::shared_ptr<IRegex>& pattern,
 Utils::JList Functions::match(const std::string& str,
                               const std::shared_ptr<IRegex>& pattern,
                               int64_t limit) {
-    auto matches = evaluateMatcher(pattern, str);
     // A negative limit means no limit; a limit of 0 returns no matches
-    if (limit >= 0 && matches.size() > static_cast<size_t>(limit)) {
+    if (limit == 0) {
+        return Utils::createSequence();
+    }
+    auto matches = evaluateMatcher(pattern, str);
+    if (limit > 0 && matches.size() > static_cast<size_t>(limit)) {
         matches.resize(limit);
     }
     return matches;

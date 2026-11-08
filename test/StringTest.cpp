@@ -357,6 +357,49 @@ TEST_F(StringTest, matchLimit) {
               (std::vector<int64_t>{0, 2, 4}));
 }
 
+// With a limit of 0 the result is known in advance, so the input isn't
+// scanned for matches
+TEST_F(StringTest, matchZeroLimitSkipsMatcher) {
+    class CountingRegex : public IRegex {
+       public:
+        CountingRegex(std::shared_ptr<IRegex> regex, int& findAllCalls)
+            : regex_(std::move(regex)), findAllCalls_(findAllCalls) {}
+        bool test(const std::string& str) const override {
+            return regex_->test(str);
+        }
+        std::optional<RegexMatch> findFirst(const std::string& str,
+                                            size_t start) const override {
+            return regex_->findFirst(str, start);
+        }
+        std::vector<RegexMatch> findAll(const std::string& str) const override {
+            findAllCalls_++;
+            return regex_->findAll(str);
+        }
+        std::vector<std::string> split(const std::string& str) const override {
+            return regex_->split(str);
+        }
+
+       private:
+        std::shared_ptr<IRegex> regex_;
+        int& findAllCalls_;
+    };
+
+    int findAllCalls = 0;
+    RegexEngine engine = [&findAllCalls](const std::string& pattern,
+                                         const RegexFlags& flags) {
+        return std::make_shared<CountingRegex>(
+            defaultRegexEngine()(pattern, flags), findAllCalls);
+    };
+    EXPECT_TRUE(Jsonata("$match('ababab', /ab/, 0)", engine)
+                    .evaluate(nullptr)
+                    .is_null());
+    EXPECT_EQ(findAllCalls, 0);
+    EXPECT_EQ(Jsonata("$match('ababab', /ab/, 1)", engine)
+                  .evaluate(nullptr)["index"],
+              0);
+    EXPECT_EQ(findAllCalls, 1);
+}
+
 TEST_F(StringTest, matchFractionalLimit) {
     EXPECT_EQ(matchIndexes("$match('ababab', /ab/, 4/2)"),
               (std::vector<int64_t>{0, 2}));

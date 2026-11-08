@@ -1113,7 +1113,11 @@ Functions::getFunctionRegistry() {
                          if (limitValue < 0) {
                              throw JException("D3040", -1, args[2]);
                          }
-                         limit = static_cast<int64_t>(std::ceil(limitValue));
+                         // a limit beyond int64_t (e.g. INT64_MAX, which
+                         // rounds up to 2^63 as a double) is no limit
+                         limit = limitValue >= 0x1p63
+                                     ? -1
+                                     : static_cast<int64_t>(std::ceil(limitValue));
                      }
 
                      // Handle both string and regex patterns (matching Java

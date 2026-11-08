@@ -380,11 +380,12 @@ std::string JException::generateMessage(const std::string& error,
         return message;
     }
 
-    // Replace each {{var}} with the next argument, in order. A placeholder
-    // with no argument is left as is.
+    // Replace each {{var}} or {{{var}}} with the next argument, in order. A
+    // placeholder with no argument is left as is.
     std::string formatted;
     try {
-        static const std::regex placeholder(R"(\{\{\w+\}\})");
+        static const std::regex placeholder(
+            R"(\{\{\{\w+\}\}\}|\{\{\w+\}\})");
         size_t next = 0;
         size_t last = 0;
         for (std::sregex_iterator m(message.begin(), message.end(), placeholder),

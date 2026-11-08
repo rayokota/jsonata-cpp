@@ -3991,11 +3991,9 @@ std::any Jsonata::partialApplyProcedure(std::shared_ptr<Parser::Symbol> proc,
     procedure->environment = env;
     procedure->arguments = unboundArgs;
     procedure->body = proc->body;
-
-    // Copy signature from original procedure to maintain signature validation
-    // This is critical for partial application to work correctly with
-    // signatures
-    procedure->signature = proc->signature;
+    // Like jsonata-js, the partial has no signature: the original signature
+    // describes all of the parameters, while the partial only takes the ones
+    // left unbound
 
     return procedure;
 }

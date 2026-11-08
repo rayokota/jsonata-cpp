@@ -61,6 +61,18 @@ TEST(ErrorMessageTest, valuesOfDifferentTypesDetails) {
               "same data type {code=T2009 position=0}");
 }
 
+// {{{token}}} is replaced with the value, like {{token}}
+TEST(ErrorMessageTest, tripleBracePlaceholder) {
+    JException ex = evalError("substring(?, 1)", ordered_json::object());
+    EXPECT_EQ(ex.getError(), "T1007");
+    EXPECT_STREQ(ex.what(),
+                 "Attempted to partially apply a non-function. Did you mean "
+                 "$substring?");
+    EXPECT_EQ(JException::msg("D3140", -1, std::string("encodeUrl"),
+                              std::string("%E0")),
+              "Malformed URL passed to $encodeUrl(): %E0");
+}
+
 TEST(ErrorMessageTest, twoPlaceholderMessagesAreUnchanged) {
     JException ex = evalError("$substring()");
     EXPECT_EQ(ex.getError(), "T0410");

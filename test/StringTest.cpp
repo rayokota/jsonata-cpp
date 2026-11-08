@@ -366,6 +366,16 @@ TEST_F(StringTest, matchFractionalLimit) {
               (std::vector<int64_t>{0, 2}));
 }
 
+TEST_F(StringTest, matchLargeLimit) {
+    // INT64_MAX rounds up to 2^63 as a double, which doesn't fit in int64_t
+    auto input = nlohmann::ordered_json::parse(
+        R"({"limit": 9223372036854775807})");
+    auto result = Jsonata("$match('ababab', /ab/, limit)").evaluate(input);
+    ASSERT_EQ(result.size(), 3u);
+    EXPECT_EQ(Jsonata("$match('ababab', /ab/, 1e300)").evaluate(nullptr).size(),
+              3u);
+}
+
 TEST_F(StringTest, matchNegativeLimit) {
     try {
         evalExpr("$match('ababab', /ab/, -1)");
@@ -392,6 +402,23 @@ TEST_F(StringTest, partialApplicationOfLambda) {
     EXPECT_EQ(evalExpr("($f := function($a, $b){ [$a, $b] }; "
                        "$map([1, 2], $f(?)))"),
               nlohmann::ordered_json::parse(R"([[1], [2]])"));
+}
+
+TEST_F(StringTest, partialApplicationOfSignedLambda) {
+    // Like jsonata-js, the partial is not validated against the lambda's
+    // signature, which describes all of its parameters
+    EXPECT_EQ(evalExpr("($f := function($a, $b)<nn:n>{ $a }; "
+                       "$map([1, 2], $f(?)))"),
+              nlohmann::ordered_json::parse("[1, 2]"));
+    EXPECT_EQ(evalExpr("($f := function($a, $b)<nn:n>{ $a + $b }; "
+                       "$f(?, 2)(3))"),
+              nlohmann::ordered_json(5));
+    try {
+        evalExpr("($f := function($a, $b)<nn:n>{ $a + $b }; $f(?, 2)('a'))");
+        FAIL() << "Expected JException";
+    } catch (const JException& ex) {
+        EXPECT_EQ(ex.getError(), "T2001");
+    }
 }
 
 TEST_F(StringTest, partialApplicationOptionalArgs) {

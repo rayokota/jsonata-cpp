@@ -3,6 +3,8 @@
 #include <jsonata/Jsonata.h>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <utility>
+#include <vector>
 
 // Error messages with three placeholders (T0412 and T2009) must have all of
 // them filled in.
@@ -78,6 +80,29 @@ TEST(ErrorMessageTest, twoPlaceholderMessagesAreUnchanged) {
     EXPECT_EQ(ex.getError(), "T0410");
     EXPECT_EQ(std::string(ex.what()),
               "Argument 1 of Object substring does not match Object signature");
+}
+
+// Like jsonata-js, the error names the first argument that doesn't match
+TEST(ErrorMessageTest, argumentIndex) {
+    for (const auto& [expression, message] :
+         std::vector<std::pair<std::string, std::string>>{
+             {"$substring('abc', 'x')",
+              "Argument 2 of Object substring does not match Object signature"},
+             {"$substring('abc', 1, 'x')",
+              "Argument 3 of Object substring does not match Object signature"},
+             {"$substringBefore(1, 2)",
+              "Argument 1 of Object substringBefore does not match Object "
+              "signature"},
+             {"$join('a', 'b', 'c')",
+              "Argument 3 of Object join does not match Object signature"},
+             {"$replace('a', 'a', 'b', 'x')",
+              "Argument 4 of Object replace does not match Object signature"},
+             {"$lookup({}, 1)",
+              "Argument 2 of Object lookup does not match Object signature"}}) {
+        JException ex = evalError(expression);
+        EXPECT_EQ(ex.getError(), "T0410") << expression;
+        EXPECT_EQ(std::string(ex.what()), message) << expression;
+    }
 }
 
 }  // namespace

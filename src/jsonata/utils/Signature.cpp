@@ -318,7 +318,10 @@ void Signature::throwValidationError(const Utils::JList &badArgs,
         partialPattern += params_[index].regex;
         std::regex tester(partialPattern);
         std::smatch match;
-        if (!std::regex_match(badSig, match, tester)) {
+        // like jsonata-js, the pattern matches a prefix of the signature, the
+        // arguments that are good so far
+        if (!std::regex_search(badSig, match, tester,
+                               std::regex_constants::match_continuous)) {
             // failed here. Like jsonata-js, the function is named at the
             // call site (see Jsonata::evaluateFunctionWithContext)
             throw JException("T0410", -1, std::to_string(goodTo + 1));

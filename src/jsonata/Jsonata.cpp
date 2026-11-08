@@ -4081,8 +4081,14 @@ bool isUnnamedSignatureError(const JException& ex) {
 void validateNativeArguments(const JFunction& native, const Utils::JList& args,
                              const std::any& input) {
     if (!native.signature) return;
+    // validate the arguments as supplied, without the slots of omitted
+    // parameters
+    Utils::JList supplied = args;
+    while (!supplied.empty() && !supplied.back().has_value()) {
+        supplied.pop_back();
+    }
     try {
-        native.signature->validate(args, input);
+        native.signature->validate(supplied, input);
     } catch (const JException& ex) {
         std::any name = nativeName(native);
         if (isUnnamedSignatureError(ex) && name.has_value()) {

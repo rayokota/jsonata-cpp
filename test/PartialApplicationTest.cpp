@@ -7,6 +7,8 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 // Partial application of native functions follows jsonata-js: the partial is
 // a lambda whose body is the native function itself, so applying it calls the
@@ -140,6 +142,29 @@ TEST(PartialApplicationTest, functionArgumentError) {
     }
 }
 
+// Errors of a function the native calls are kept, though $each was given an
+// array that doesn't match its signature
+TEST(PartialApplicationTest, functionArgumentErrorKept) {
+    for (const auto& [expression, error] :
+         std::vector<std::pair<std::string, std::string>>{
+             {"[5,6] ~> $each(?, function($v){ $error('oops') })", "D3137"},
+             {"$each(?, function($v){ $assert(false, 'boom') })([5,6])",
+              "D3141"}}) {
+        try {
+            eval(expression);
+            ADD_FAILURE() << "Expected JException for " << expression;
+        } catch (const JException& ex) {
+            EXPECT_EQ(ex.getError(), error) << expression;
+        }
+    }
+}
+
+// A missing required argument is passed as undefined, like in jsonata-js
+TEST(PartialApplicationTest, missingRequiredArgs) {
+    EXPECT_EQ(eval("$substring(?)('abc')"), "abc");
+    EXPECT_EQ(eval("$pad(?)('abc')"), "abc");
+}
+
 TEST(PartialApplicationTest, missingArgsBound) {
     EXPECT_EQ(eval("$substring(?, 1)('hello')"), "ello");
 }
@@ -220,6 +245,21 @@ TEST(PartialApplicationTest, stdFunctionWithoutSignature) {
                        return num(args[0]) + num(args[1]);
                    }));
     EXPECT_EQ(expression.evaluate(nullptr), ordered_json(6));
+}
+
+// Every parameter of the partial gets a valid name, however many there are
+TEST(PartialApplicationTest, manyArgs) {
+    std::string args;
+    for (int i = 1; i <= 30; i++) args += ", " + std::to_string(i);
+    Jsonata expression("$sum(?" + args + ")(100)");
+    expression.registerFunction(
+        "sum", std::function<std::any(const Utils::JList&)>(
+                   [](const Utils::JList& args) -> std::any {
+                       double sum = 0;
+                       for (const auto& arg : args) sum += num(arg);
+                       return sum;
+                   }));
+    EXPECT_EQ(expression.evaluate(nullptr), ordered_json(100 + 30 * 31 / 2));
 }
 
 // The partial calls the function itself, not a function looked up by name, so

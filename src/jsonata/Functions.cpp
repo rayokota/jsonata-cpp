@@ -4193,7 +4193,9 @@ std::any Functions::lookup(const std::any& input, const std::string& key) {
 }
 
 void Functions::error(const std::string& message) {
-    throw JException("D1001", 0, message);
+    throw JException("D3137", -1,
+                     !message.empty() ? message
+                                      : std::string("$error() function evaluated"));
 }
 
 void Functions::assertFn(bool condition, const std::string& message) {

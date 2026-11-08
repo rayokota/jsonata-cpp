@@ -82,6 +82,23 @@ TEST(FunctionNameTest, lambdaArrayTypeError) {
     }
 }
 
+// A function without a signature that can't convert its arguments is named
+// at the call site too
+TEST(FunctionNameTest, failedConversion) {
+    Jsonata e("$f(1)");
+    e.registerFunction("f", JFunction([](const Utils::JList& args, const std::any&,
+                                         std::shared_ptr<Frame>) -> std::any {
+                           return std::any_cast<std::string>(args[0]);
+                       }));
+    try {
+        e.evaluate(nullptr);
+        FAIL() << "Expected JException";
+    } catch (const JException& ex) {
+        EXPECT_EQ(ex.getError(), "T0410");
+        EXPECT_EQ(name(ex), "f");
+    }
+}
+
 // An error raised while a higher-order function calls its function argument
 // is named after the higher-order function, the innermost call site
 TEST(FunctionNameTest, functionArgument) {

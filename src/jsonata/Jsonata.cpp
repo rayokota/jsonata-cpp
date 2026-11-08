@@ -155,6 +155,23 @@ class FrameRegistry {
 // or null if there is none.
 thread_local FrameRegistry* currentFrameRegistry = nullptr;
 
+// The name a function was called by: the variable it is bound to (its
+// registered name, if it is registered), or undefined if it wasn't called by
+// name
+std::any callName(const std::shared_ptr<Parser::Symbol>& expr) {
+    if (expr->procedure->type == "variable") {
+        return expr->procedure->value;
+    }
+    if (expr->procedure->type == "path" && !expr->procedure->steps.empty()) {
+        return expr->procedure->steps[0]->value;
+    }
+    return std::any{};
+}
+
+// The number of functions applied on this thread, which tells whether a native
+// function called back into JSONata (see Jsonata::applyNativeFunction)
+thread_local uint64_t applyCount = 0;
+
 // Covers one top-level evaluate() call. While it is alive, frames created by
 // createEvaluationFrame() are recorded; when it is destroyed, by a return or
 // an exception, their bindings are cleared and the thread-local evaluation
@@ -786,21 +803,16 @@ std::any Jsonata::evaluateFunctionWithContext(
         // is left as is.
         if ((ex.getError() == "T0410" || ex.getError() == "T0412") &&
             !ex.getExpected().has_value()) {
-            std::any callName;
-            if (expr->procedure->type == "variable") {
-                callName = expr->procedure->value;
-            } else if (expr->procedure->type == "path" &&
-                       !expr->procedure->steps.empty()) {
-                callName = expr->procedure->steps[0]->value;
-            }
-            if (callName.has_value()) {
+            std::any name = callName(expr);
+            if (name.has_value()) {
                 throw JException(ex.getError(), ex.getLocation(),
-                                 ex.getCurrent(), callName, ex.getExtra());
+                                 ex.getCurrent(), name, ex.getExtra());
             }
         }
         throw;
     } catch (const std::bad_any_cast&) {
-        throw JException("T0410", expr->position, "Function evaluation error");
+        // a function that couldn't convert its arguments
+        throw JException("T0410", expr->position, std::any{}, callName(expr));
     }
 }
 
@@ -2719,6 +2731,7 @@ std::any Jsonata::apply(const std::any& proc, const Utils::JList& args,
                         const std::any& input,
                         std::shared_ptr<Frame> environment) {
     // Java reference implementation: Jsonata.java lines 1674-1695
+    applyCount++;
     auto result = applyInner(proc, args, input, environment);
 
     // Trampoline loop - this gets invoked as a result of tail-call optimization
@@ -4024,7 +4037,7 @@ std::any Jsonata::partialApplyProcedure(std::shared_ptr<Parser::Symbol> proc,
 
 std::any Jsonata::partialApplyNativeFunction(const std::any& native,
                                              const Utils::JList& args) {
-    // Like jsonata-js: create a lambda function($a, $b, ...){ _ } whose body
+    // Like jsonata-js: create a lambda function($p0, $p1, ...){ _ } whose body
     // is the native function itself. Applying it calls the native directly
     // (see applyNativeFunction), so the function isn't looked up by name and
     // its signature isn't validated again.
@@ -4043,7 +4056,7 @@ std::any Jsonata::partialApplyNativeFunction(const std::any& native,
     std::vector<std::string> paramNames;
     std::string params;
     for (size_t i = 0; i < nargs; i++) {
-        paramNames.push_back(std::string(1, static_cast<char>('a' + i)));
+        paramNames.push_back("p" + std::to_string(i));
         if (i > 0) params += ", ";
         params += "$" + paramNames.back();
     }
@@ -4099,22 +4112,32 @@ void validateNativeArguments(const JFunction& native, const Utils::JList& args,
     }
 }
 
-// A failed cast would otherwise be swallowed, and the call return undefined
+// A failed cast would otherwise be swallowed, and the call return undefined.
+// calledBack tells whether the native called a function, such as the function
+// argument of $map, which may have raised the error instead.
 [[noreturn]] void throwNativeCastError(const JFunction& native,
                                        const Utils::JList& args,
-                                       const std::any& input) {
-    validateNativeArguments(native, args, input);
+                                       const std::any& input,
+                                       bool calledBack) {
+    if (!calledBack) {
+        validateNativeArguments(native, args, input);
+    }
     throw JException("T0410", -1, std::any{}, nativeName(native));
 }
 
 // An error raised by the native, such as D1001 for a string where a number is
 // expected, is replaced by a signature error if the arguments don't match;
-// otherwise it is a legitimate error of the native and is kept
+// otherwise it is a legitimate error of the native and is kept. An error
+// raised by a function the native called (calledBack) is not an error of the
+// native's own arguments, so it is kept too. Either way an unnamed signature
+// error is named after the native, as in a direct call.
 [[noreturn]] void throwNativeError(const JFunction& native,
                                    const Utils::JList& args,
                                    const std::any& input,
-                                   const JException& ex) {
-    validateNativeArguments(native, args, input);
+                                   const JException& ex, bool calledBack) {
+    if (!calledBack) {
+        validateNativeArguments(native, args, input);
+    }
     std::any name = nativeName(native);
     if (isUnnamedSignatureError(ex) && name.has_value()) {
         throw JException(ex.getError(), ex.getLocation(), ex.getCurrent(),
@@ -4138,12 +4161,15 @@ std::any Jsonata::applyNativeFunction(std::shared_ptr<Parser::Symbol> proc,
     if (native.type() == typeid(JFunction)) {
         const auto& jfunc = std::any_cast<const JFunction&>(native);
         if (jfunc.implementation) {
+            uint64_t applies = applyCount;
             try {
                 return jfunc.implementation(args, proc->input, env);
             } catch (const std::bad_any_cast&) {
-                throwNativeCastError(jfunc, args, proc->input);
+                throwNativeCastError(jfunc, args, proc->input,
+                                     applyCount != applies);
             } catch (const JException& ex) {
-                throwNativeError(jfunc, args, proc->input, ex);
+                throwNativeError(jfunc, args, proc->input, ex,
+                                 applyCount != applies);
             }
         }
     } else if (native.type() ==

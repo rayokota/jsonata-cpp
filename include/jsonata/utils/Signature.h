@@ -87,6 +87,7 @@ class Signature {
     Signature(const std::string& signature, const std::string& function);
 
     void setFunctionName(const std::string& functionName);
+    const std::string& getFunctionName() const { return functionName_; }
 
     /**
      * Validates arguments against the signature

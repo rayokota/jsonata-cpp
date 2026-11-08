@@ -784,7 +784,8 @@ std::any Jsonata::evaluateFunctionWithContext(
         // was called by: its registered name or the variable it is bound to.
         // An error that already names a function (e.g. from a nested call)
         // is left as is.
-        if (ex.getError() == "T0410" && !ex.getExpected().has_value()) {
+        if ((ex.getError() == "T0410" || ex.getError() == "T0412") &&
+            !ex.getExpected().has_value()) {
             std::any callName;
             if (expr->procedure->type == "variable") {
                 callName = expr->procedure->value;
@@ -793,8 +794,8 @@ std::any Jsonata::evaluateFunctionWithContext(
                 callName = expr->procedure->steps[0]->value;
             }
             if (callName.has_value()) {
-                throw JException("T0410", ex.getLocation(), ex.getCurrent(),
-                                 callName);
+                throw JException(ex.getError(), ex.getLocation(),
+                                 ex.getCurrent(), callName, ex.getExtra());
             }
         }
         throw;
@@ -2913,7 +2914,9 @@ Utils::JList Jsonata::validateArguments(const std::any& signature,
             if (symbol && !symbol->signature.empty()) {
                 // Create Signature object and validate
                 try {
-                    utils::Signature sig(symbol->signature, "lambda");
+                    // the name reported in signature errors is taken from
+                    // the call site
+                    utils::Signature sig(symbol->signature, "");
                     validatedArgs = sig.validate(args, context);
                     // Debug: check if validation is working correctly
                     if (args.size() != validatedArgs.size()) {
@@ -4055,6 +4058,38 @@ std::any Jsonata::partialApplyNativeFunction(const std::any& native,
     return partialApplyProcedure(bodyAST, args);
 }
 
+namespace {
+
+// A native function is called without validating its signature, like in
+// jsonata-js, so it may get arguments it can't handle. Rather than let the
+// failed cast be swallowed (and the call return undefined), report it as a
+// signature error: validating the arguments now names the one that doesn't
+// match. The error names the native function, as the call site may be a
+// higher-order function such as $map.
+[[noreturn]] void throwNativeArgumentError(const JFunction& native,
+                                           const Utils::JList& args,
+                                           const std::any& input) {
+    std::any name;
+    if (native.signature && !native.signature->getFunctionName().empty()) {
+        name = native.signature->getFunctionName();
+    }
+    if (native.signature) {
+        try {
+            native.signature->validate(args, input);
+        } catch (const JException& ex) {
+            if ((ex.getError() == "T0410" || ex.getError() == "T0412") &&
+                !ex.getExpected().has_value() && name.has_value()) {
+                throw JException(ex.getError(), ex.getLocation(),
+                                 ex.getCurrent(), name, ex.getExtra());
+            }
+            throw;
+        }
+    }
+    throw JException("T0410", -1, std::any{}, name);
+}
+
+}  // namespace
+
 std::any Jsonata::applyNativeFunction(std::shared_ptr<Parser::Symbol> proc,
                                       std::shared_ptr<Frame> env) {
     // Like jsonata-js: look up the arguments in the environment and call the
@@ -4068,13 +4103,21 @@ std::any Jsonata::applyNativeFunction(std::shared_ptr<Parser::Symbol> proc,
     if (native.type() == typeid(JFunction)) {
         const auto& jfunc = std::any_cast<const JFunction&>(native);
         if (jfunc.implementation) {
-            return jfunc.implementation(args, proc->input, env);
+            try {
+                return jfunc.implementation(args, proc->input, env);
+            } catch (const std::bad_any_cast&) {
+                throwNativeArgumentError(jfunc, args, proc->input);
+            }
         }
     } else if (native.type() ==
                typeid(std::function<std::any(const std::vector<std::any>&)>)) {
-        return std::any_cast<
-            const std::function<std::any(const std::vector<std::any>&)>&>(
-            native)(std::vector<std::any>(args.begin(), args.end()));
+        try {
+            return std::any_cast<
+                const std::function<std::any(const std::vector<std::any>&)>&>(
+                native)(std::vector<std::any>(args.begin(), args.end()));
+        } catch (const std::bad_any_cast&) {
+            throw JException("T0410", -1);
+        }
     } else if (native.type() == typeid(std::function<std::any()>)) {
         return std::any_cast<const std::function<std::any()>&>(native)();
     }

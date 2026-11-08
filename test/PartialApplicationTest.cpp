@@ -80,6 +80,23 @@ TEST(PartialApplicationTest, mapAppend) {
     EXPECT_EQ(eval("$map($, $append(?))", input), input);
 }
 
+// The native is called without validating its signature, but arguments it
+// can't handle are still reported as a signature error, not ignored. The
+// error names the native, not the higher-order function calling it.
+TEST(PartialApplicationTest, argumentOfWrongType) {
+    for (const char* expression :
+         {"$substring(?, 1)(123)", "$map([1, 2], $substring(?, 1))"}) {
+        try {
+            eval(expression);
+            ADD_FAILURE() << "Expected JException for " << expression;
+        } catch (const JException& ex) {
+            EXPECT_EQ(ex.getError(), "T0410") << expression;
+            EXPECT_EQ(std::any_cast<std::string>(ex.getExpected()), "substring")
+                << expression;
+        }
+    }
+}
+
 TEST(PartialApplicationTest, missingArgsBound) {
     EXPECT_EQ(eval("$substring(?, 1)('hello')"), "ello");
 }

@@ -496,7 +496,10 @@ Utils::JList Signature::validate(const Utils::JList &args,
                                 throw JException(
                                     "T0412", -1,
                                     static_cast<int64_t>(argIndex + 1),
-                                    functionName_, param.subtype);
+                                    functionName_.empty()
+                                        ? std::any{}
+                                        : std::any(functionName_),
+                                    param.subtype);
                             }
                             // the function expects an array. If it's not one,
                             // make it so

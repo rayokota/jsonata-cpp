@@ -61,6 +61,27 @@ TEST(FunctionNameTest, lambdaViaVariable) {
     EXPECT_EQ(name(error("($f := function($x)<n:n>{ $x }; $f('a'))")), "f");
 }
 
+// T0412 errors of a function without a name are named at the call site too
+TEST(FunctionNameTest, lambdaArrayTypeError) {
+    Jsonata e("($f := function($x)<a<n>:n>{ $x }; $f(['a']))");
+    try {
+        e.evaluate(nullptr);
+        FAIL() << "Expected JException";
+    } catch (const JException& ex) {
+        EXPECT_EQ(ex.getError(), "T0412");
+        EXPECT_STREQ(ex.what(), "Argument 1 of Object f must be an array of n");
+        EXPECT_EQ(std::any_cast<std::string>(ex.getExtra()), "n");
+    }
+    // a builtin keeps its own name
+    try {
+        Jsonata("($s := $sum; $s(['a']))").evaluate(nullptr);
+        FAIL() << "Expected JException";
+    } catch (const JException& ex) {
+        EXPECT_STREQ(ex.what(),
+                     "Argument 1 of Object sum must be an array of n");
+    }
+}
+
 // An error raised while a higher-order function calls its function argument
 // is named after the higher-order function, the innermost call site
 TEST(FunctionNameTest, functionArgument) {

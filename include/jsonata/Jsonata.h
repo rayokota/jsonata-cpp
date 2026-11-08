@@ -206,8 +206,9 @@ class Jsonata {
     std::any partialApplyProcedure(std::shared_ptr<class Parser::Symbol> proc,
                                    const Utils::JList& args);
     std::any partialApplyNativeFunction(const std::any& native,
-                                        const Utils::JList& args,
-                                        const std::string& functionName);
+                                        const Utils::JList& args);
+    std::any applyNativeFunction(std::shared_ptr<class Parser::Symbol> proc,
+                                 std::shared_ptr<Frame> env);
 
     // Thread-local instances (matching Java implementation)
     static thread_local Jsonata* currentInstance_;

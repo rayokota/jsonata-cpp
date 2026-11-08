@@ -117,8 +117,7 @@ class Signature {
     std::regex parseSignature(const std::string& signature);
 
     void throwValidationError(const Utils::JList& badArgs,
-                              const std::string& badSig,
-                              const std::string& functionName);
+                              const std::string& badSig);
 
     // Helper methods for type checking
     bool isNumericType(const std::any& value);

@@ -308,8 +308,7 @@ std::regex Signature::parseSignature(const std::string &signature) {
 }
 
 void Signature::throwValidationError(const Utils::JList &badArgs,
-                                     const std::string &badSig,
-                                     const std::string &functionName) {
+                                     const std::string &badSig) {
     // to figure out where this went wrong we need apply each component of the
     // regex to each argument until we get to the one that fails to match
     std::string partialPattern = "^";
@@ -320,16 +319,15 @@ void Signature::throwValidationError(const Utils::JList &badArgs,
         std::regex tester(partialPattern);
         std::smatch match;
         if (!std::regex_match(badSig, match, tester)) {
-            // failed here - Java reference: line 289
-            throw JException("T0410", -1, std::to_string(goodTo + 1),
-                             functionName);
+            // failed here. Like jsonata-js, the function is named at the
+            // call site (see Jsonata::evaluateFunctionWithContext)
+            throw JException("T0410", -1, std::to_string(goodTo + 1));
         }
         goodTo = static_cast<int64_t>(match[0].length());
     }
     // if it got this far, it's probably because of extraneous arguments (we
     // haven't added the trailing '$' in the regex yet.
-    // Java reference: line 295
-    throw JException("T0410", -1, std::to_string(goodTo + 1), functionName);
+    throw JException("T0410", -1, std::to_string(goodTo + 1));
 }
 
 Utils::JList Signature::validate(const Utils::JList &args,
@@ -520,7 +518,7 @@ Utils::JList Signature::validate(const Utils::JList &args,
         }
         return validatedArgs;
     }
-    throwValidationError(args, suppliedSig, functionName_);
+    throwValidationError(args, suppliedSig);
     return {};  // dead code -> compiler happy
 }
 

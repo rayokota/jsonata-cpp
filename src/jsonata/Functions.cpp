@@ -62,12 +62,12 @@ static inline bool isNull(const std::any& value) {
 }
 // Throws T0410 if any of the first `count` arguments is a JSON null. Like
 // jsonata-js, this is checked before undefined arguments are handled, so
-// e.g. $substring($nothing, null) is an error.
-static void rejectNullArgs(const Utils::JList& args, size_t count,
-                           const std::string& functionName) {
+// e.g. $substring($nothing, null) is an error. As for other signature errors,
+// the function is named at the call site.
+static void rejectNullArgs(const Utils::JList& args, size_t count) {
     for (size_t i = 0; i < count && i < args.size(); i++) {
         if (Utils::isNullValue(args[i])) {
-            throw JException("T0410", -1, std::to_string(i + 1), functionName);
+            throw JException("T0410", -1, std::to_string(i + 1));
         }
     }
 }
@@ -937,7 +937,7 @@ Functions::getFunctionRegistry() {
             {"substring",
              FunctionEntry(
                  [](const Utils::JList& args) -> std::any {
-                     rejectNullArgs(args, 3, "substring");
+                     rejectNullArgs(args, 3);
 
                      // undefined inputs always return undefined
                      if (args.empty() || !args[0].has_value()) {
@@ -966,7 +966,7 @@ Functions::getFunctionRegistry() {
             {"substringBefore",
              FunctionEntry(
                  [](const Utils::JList& args) -> std::any {
-                     rejectNullArgs(args, 2, "substringBefore");
+                     rejectNullArgs(args, 2);
 
                      // undefined inputs always return undefined
                      if (args.empty() || !args[0].has_value()) {
@@ -989,7 +989,7 @@ Functions::getFunctionRegistry() {
             {"substringAfter",
              FunctionEntry(
                  [](const Utils::JList& args) -> std::any {
-                     rejectNullArgs(args, 2, "substringAfter");
+                     rejectNullArgs(args, 2);
 
                      // undefined inputs always return undefined
                      if (args.empty() || !args[0].has_value()) {
@@ -1080,7 +1080,7 @@ Functions::getFunctionRegistry() {
 
             {"pad", FunctionEntry(
                         [](const Utils::JList& args) -> std::any {
-                            rejectNullArgs(args, 3, "pad");
+                            rejectNullArgs(args, 3);
                             if (args.empty() || !isString(args[0]))
                                 return std::any();
                             auto str = std::any_cast<std::string>(args[0]);
@@ -1158,8 +1158,7 @@ Functions::getFunctionRegistry() {
                      // A null string returns undefined (as before); a null
                      // pattern is an error
                      if (args.size() >= 2 && Utils::isNullValue(args[1])) {
-                         throw JException("T0410", -1, std::string("2"),
-                                          std::string("contains"));
+                         throw JException("T0410", -1, std::string("2"));
                      }
 
                      // undefined inputs (including the pattern) return
@@ -1179,7 +1178,7 @@ Functions::getFunctionRegistry() {
             {"replace",
              FunctionEntry(
                  [](const Utils::JList& args) -> std::any {
-                     rejectNullArgs(args, 2, "replace");
+                     rejectNullArgs(args, 2);
 
                      // undefined inputs (including the pattern) return
                      // undefined
@@ -1211,7 +1210,7 @@ Functions::getFunctionRegistry() {
             {"split",
              FunctionEntry(
                  [](const Utils::JList& args) -> std::any {
-                     rejectNullArgs(args, 2, "split");
+                     rejectNullArgs(args, 2);
 
                      // undefined inputs (including the pattern) return
                      // undefined
@@ -2250,8 +2249,15 @@ std::any Functions::merge(const Utils::JList& args) {
         for (const auto& item : inputArray) {
             if (item.has_value()) {
                 try {
-                    // Handle direct map
-                    if (item.type() ==
+                    // Like JS "for (var prop in obj)", an array is merged
+                    // with its indexes as keys. This can happen where the
+                    // signature is not validated, e.g. $merge(?)
+                    if (isArray(item)) {
+                        Utils::JList list = Utils::arrayify(item);
+                        for (size_t i = 0; i < list.size(); i++) {
+                            result[std::to_string(i)] = list[i];
+                        }
+                    } else if (item.type() ==
                         typeid(nlohmann::ordered_map<std::string, std::any>)) {
                         const auto& map =
                             std::any_cast<const nlohmann::ordered_map<
@@ -2274,12 +2280,14 @@ std::any Functions::merge(const Utils::JList& args) {
 }
 
 std::any Functions::append(const Utils::JList& args) {
-    if (args.size() < 2) {
-        return std::any{};  // Invalid arguments
+    if (args.empty()) {
+        return std::any{};
     }
 
+    // A missing second argument is undefined. This can happen where the
+    // signature is not validated, e.g. $append(?)
     auto arg1 = args[0];
-    auto arg2 = args[1];
+    auto arg2 = args.size() >= 2 ? args[1] : std::any{};
 
     // Disregard undefined args
     if (!arg1.has_value()) {
@@ -3079,8 +3087,21 @@ std::any Functions::each(const std::any& obj, const std::any& func) {
         // Java: var result = Utils.createSequence();
         Utils::JList result = Utils::createSequence();
 
+        // Like JS "for (var key in obj)", an array is iterated with its
+        // indexes as (string) keys. This can happen where the signature is
+        // not validated, e.g. $each(?, ...)
+        if (isArray(obj)) {
+            Utils::JList list = Utils::arrayify(obj);
+            for (size_t i = 0; i < list.size(); i++) {
+                auto func_args = hofFuncArgs(func, list[i], std::to_string(i), obj);
+                auto val = funcApply(func, func_args);
+                if (val.has_value()) {
+                    result.push_back(val);
+                }
+            }
+        }
         // Handle direct map<string, any>
-        if (obj.type() ==
+        else if (obj.type() ==
             typeid(nlohmann::ordered_map<std::string, std::any>)) {
             const auto& map = std::any_cast<
                 const nlohmann::ordered_map<std::string, std::any>&>(obj);

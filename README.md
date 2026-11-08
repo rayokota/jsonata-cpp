@@ -36,7 +36,7 @@ target_link_libraries(your_target jsonata::jsonata)
 
 A very simple start:
 
-```
+```cpp
 #include <iostream>
 #include <jsonata/Jsonata.h>
 #include <nlohmann/json.hpp>

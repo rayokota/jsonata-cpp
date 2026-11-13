@@ -92,10 +92,13 @@ class Utils {
         // D2015.
         std::optional<int64_t> maxLength;
 
-        // Growth methods that enforce maxLength (hiding std::vector's)
+        // Growth methods that enforce maxLength. They hide all of
+        // std::vector's push_back/insert overloads; the base ones aren't
+        // brought in with a using-declaration, since the standard library's
+        // range insert has extra template parameters (an input iterator
+        // constraint) that would make calls ambiguous with the one below.
         void push_back(const std::any& value);
         void push_back(std::any&& value);
-        using std::vector<std::any>::insert;
         std::vector<std::any>::iterator insert(
             std::vector<std::any>::const_iterator pos, const std::any& value);
         template <class InputIt>

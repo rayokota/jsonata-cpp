@@ -2329,6 +2329,9 @@ std::any Functions::append(const Utils::JList& args) {
         // Java line 2093: arg1 = new JList<>((List)arg1); - creates a new
         // regular JList (not sequence)
         Utils::JList result;  // Start with fresh JList (no sequence flag)
+        // Keep the bound, since callers such as evaluateWildcard() keep
+        // growing the result
+        result.maxLength = Utils::getMaxSequenceLength();
         result.insert(result.end(), array1.begin(),
                       array1.end());  // Copy first array
         result.insert(result.end(), array2.begin(),

@@ -273,12 +273,13 @@ TEST_F(StringTest, stackGuardrailPropagatesThroughEvalTest) {
 
 // Evaluates the expression with the given `sequence` bound and returns the
 // error code it raised, or an empty string if it didn't raise one
-static std::string sequenceGuardrailError(const std::string& expression,
-                                          int64_t sequence) {
+static std::string sequenceGuardrailError(
+    const std::string& expression, int64_t sequence,
+    const nlohmann::ordered_json& input = nullptr) {
     Jsonata expr(expression, defaultRegexEngine(), std::nullopt, std::nullopt,
                  sequence);
     try {
-        expr.evaluate(nullptr);
+        expr.evaluate(input);
     } catch (const JException& e) {
         return e.getError();
     }
@@ -298,6 +299,36 @@ TEST_F(StringTest, sequenceGuardrailStopsAppendingLargeSequencesTest) {
     EXPECT_EQ(
         sequenceGuardrailError("$append([0..600], [0..600]) ~> $count()", 1000),
         "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailStopsLargeWildcardResultsTest) {
+    // $append's result keeps the bound, so the wildcard's accumulator stays
+    // bounded after appending an array value
+    auto input = nlohmann::ordered_json::parse(R"({"a": [1, 2], "b": 3})");
+    EXPECT_EQ(sequenceGuardrailError("* ~> $count()", 2, input), "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailStopsLargeDescendantResultsTest) {
+    auto input = nlohmann::ordered_json::parse(R"({"a": 1, "b": 2})");
+    EXPECT_EQ(sequenceGuardrailError("** ~> $count()", 2, input), "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailStopsLargeTupleStreamsTest) {
+    // The tuples are discarded by the filter, but are still bounded while
+    // they're built
+    nlohmann::ordered_json input = {{"a", nlohmann::ordered_json::array()},
+                                    {"b", nlohmann::ordered_json::array()}};
+    for (int i = 0; i <= 100; ++i) {
+        input["a"].push_back(i);
+        input["b"].push_back(i);
+    }
+    EXPECT_EQ(sequenceGuardrailError("a@$x.b@$y[false]", 1000, input),
+              "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailAllowsExactLimitRangeTest) {
+    Jsonata expr("[0..2]", defaultRegexEngine(), std::nullopt, std::nullopt, 3);
+    EXPECT_EQ(expr.evaluate(nullptr), nlohmann::ordered_json({0, 1, 2}));
 }
 
 TEST_F(StringTest, sequenceGuardrailAllowsSequencesWithinLimitTest) {

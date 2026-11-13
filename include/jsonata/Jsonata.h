@@ -350,8 +350,7 @@ class Jsonata {
     std::any evaluateDescendant(std::shared_ptr<Parser::Symbol> expr,
                                 const std::any& input,
                                 std::shared_ptr<Frame> environment);
-    void recurseDescendants(const std::any& input,
-                            std::vector<std::any>& results);
+    void recurseDescendants(const std::any& input, Utils::JList& results);
     std::any evaluateApply(std::shared_ptr<Parser::Symbol> expr,
                            const std::any& input,
                            std::shared_ptr<Frame> environment);

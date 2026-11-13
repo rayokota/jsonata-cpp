@@ -1480,7 +1480,7 @@ std::any Jsonata::evaluateDescendant(std::shared_ptr<Parser::Symbol> expr,
 }
 
 void Jsonata::recurseDescendants(const std::any& input,
-                                 std::vector<std::any>& results) {
+                                 Utils::JList& results) {
     // Port of Java recurseDescendants - this is the equivalent of //* in XPath
 
     // Check if input is not a List/vector - following Java logic exactly
@@ -3536,7 +3536,7 @@ std::any Jsonata::evaluateTupleStep(
     std::shared_ptr<Frame> environment) {
     if (!expr) return std::any{};
 
-    Utils::JList result;
+    Utils::JList result = Utils::createSequence();
     // Java reference lines 411-429: handle sort expressions
     if (expr->type == "sort") {
         if (tupleBindings.has_value()) {

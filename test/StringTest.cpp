@@ -2,6 +2,8 @@
 #include <jsonata/Jsonata.h>
 #include <nlohmann/json.hpp>
 #include <jsonata/JException.h>
+#include <iterator>
+#include <sstream>
 #include <vector>
 #include <memory>
 #include <string>
@@ -269,6 +271,123 @@ TEST_F(StringTest, stackGuardrailPropagatesThroughEvalTest) {
     } catch (const JException& e) {
         EXPECT_EQ(e.getError(), "D1011");
     }
+}
+
+// Evaluates the expression with the given `sequence` bound and returns the
+// error code it raised, or an empty string if it didn't raise one
+static std::string sequenceGuardrailError(
+    const std::string& expression, int64_t sequence,
+    const nlohmann::ordered_json& input = nullptr) {
+    Jsonata expr(expression, defaultRegexEngine(), std::nullopt, std::nullopt,
+                 sequence);
+    try {
+        expr.evaluate(input);
+    } catch (const JException& e) {
+        return e.getError();
+    }
+    return "";
+}
+
+TEST_F(StringTest, sequenceGuardrailStopsLargeRangesTest) {
+    EXPECT_EQ(sequenceGuardrailError("[0..1001]", 1000), "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailStopsLargeIntermediateSequencesTest) {
+    EXPECT_EQ(sequenceGuardrailError("[0..100].([0..100]) ~> $count()", 1000),
+              "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailStopsAppendingLargeSequencesTest) {
+    EXPECT_EQ(
+        sequenceGuardrailError("$append([0..600], [0..600]) ~> $count()", 1000),
+        "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailStopsLargeWildcardResultsTest) {
+    // $append's result keeps the bound, so the wildcard's accumulator stays
+    // bounded after appending an array value
+    auto input = nlohmann::ordered_json::parse(R"({"a": [1, 2], "b": 3})");
+    EXPECT_EQ(sequenceGuardrailError("* ~> $count()", 2, input), "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailStopsLargeDescendantResultsTest) {
+    auto input = nlohmann::ordered_json::parse(R"({"a": 1, "b": 2})");
+    EXPECT_EQ(sequenceGuardrailError("** ~> $count()", 2, input), "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailStopsLargeTupleStreamsTest) {
+    // The tuples are discarded by the filter, but are still bounded while
+    // they're built
+    nlohmann::ordered_json input = {{"a", nlohmann::ordered_json::array()},
+                                    {"b", nlohmann::ordered_json::array()}};
+    for (int i = 0; i <= 100; ++i) {
+        input["a"].push_back(i);
+        input["b"].push_back(i);
+    }
+    EXPECT_EQ(sequenceGuardrailError("a@$x.b@$y[false]", 1000, input),
+              "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailAllowsExactLimitRangeTest) {
+    Jsonata expr("[0..2]", defaultRegexEngine(), std::nullopt, std::nullopt, 3);
+    EXPECT_EQ(expr.evaluate(nullptr), nlohmann::ordered_json({0, 1, 2}));
+}
+
+TEST_F(StringTest, sequenceGuardrailAppliesToParsedExpressionsTest) {
+    Jsonata evaluator(defaultRegexEngine(), std::nullopt, std::nullopt, 2);
+    auto ast = evaluator.parse("[0..3]");
+    try {
+        evaluator.evaluate(ast, std::any{}, evaluator.getEnvironment());
+        FAIL() << "Expected JException D2015";
+    } catch (const JException& e) {
+        EXPECT_EQ(e.getError(), "D2015");
+    }
+}
+
+TEST_F(StringTest, sequenceGuardrailInsertsFromSinglePassIteratorsTest) {
+    // Checking the bound mustn't consume the items of a single-pass iterator
+    auto insertInts = [](const std::string& ints, int64_t sequence) {
+        auto previous = Utils::setMaxSequenceLength(sequence);
+        auto list = Utils::createSequence();
+        Utils::setMaxSequenceLength(previous);
+        std::istringstream stream(ints);
+        list.insert(list.end(), std::istream_iterator<int>(stream),
+                    std::istream_iterator<int>());
+        return list.size();
+    };
+    EXPECT_EQ(insertInts("1 2 3", 3), 3u);
+    try {
+        insertInts("1 2 3", 2);
+        FAIL() << "Expected JException D2015";
+    } catch (const JException& e) {
+        EXPECT_EQ(e.getError(), "D2015");
+    }
+}
+
+TEST_F(StringTest, sequenceGuardrailAllowsSequencesWithinLimitTest) {
+    Jsonata expr1("[0..30].([0..30]) ~> $count()", defaultRegexEngine(),
+                  std::nullopt, std::nullopt, 1000);
+    EXPECT_EQ(expr1.evaluate(nullptr), 961);
+    Jsonata expr2("$append([0..499], [0..499]) ~> $count()",
+                  defaultRegexEngine(), std::nullopt, std::nullopt, 1000);
+    EXPECT_EQ(expr2.evaluate(nullptr), 1000);
+}
+
+TEST_F(StringTest, sequenceGuardrailPropagatesThroughEvalTest) {
+    // As with `stack`, jsonata-cpp's functionEval re-throws JException as-is,
+    // so the original D2015 code survives here.
+    EXPECT_EQ(
+        sequenceGuardrailError("$eval('[0..100].([0..100]) ~> $count()')", 1000),
+        "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailIsRestoredAfterEvaluateTest) {
+    // The bound only applies to the evaluation of the expression it was
+    // configured on, not to later evaluations on the same thread.
+    EXPECT_EQ(sequenceGuardrailError("[0..100].([0..100]) ~> $count()", 1000),
+              "D2015");
+    Jsonata unlimited("[0..100].([0..100]) ~> $count()");
+    EXPECT_EQ(unlimited.evaluate(nullptr), 10201);
 }
 
 TEST_F(StringTest, regexTest) {

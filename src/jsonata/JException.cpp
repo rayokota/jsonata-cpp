@@ -143,7 +143,8 @@ std::unordered_map<std::string, std::string> errorCodes = {
                                                                      // error
     {"D2014",
      "The size of the sequence allocated by the range operator (..) must not "
-     "exceed 1e6.  Attempted to allocate {{value}}."},
+     "exceed 1e7.  Attempted to allocate {{value}}."},
+    {"D2015", "The maximum sequence length of {{value}} was exceeded."},
     {"D3001", "Attempting to invoke string Object on Infinity or NaN"},
     {"D3010", "Second argument of replace Object cannot be an empty string"},
     {"D3011",

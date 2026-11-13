@@ -74,6 +74,8 @@ untrusted expressions, configure these guardrails (see the JS reference implemen
   with error `D1011`.
 - **Excessive execution time** — the `timeout` argument (in milliseconds) catches tail-recursive infinite loops that
   `stack` can't. Exceeding it raises `D1012`.
+- **Excessive sequence length** — the `sequence` argument caps the length of any sequence the expression creates,
+  including intermediate sequences, to protect against memory exhaustion. Exceeding it raises `D2015`.
 - **Rogue regular expressions** — the `regexEngine` argument lets you swap in a linear-time engine (e.g.
   [RE2](https://github.com/google/re2)) to protect against [ReDoS](https://en.wikipedia.org/wiki/ReDoS), since the
   `timeout` guardrail can't interrupt a regex match in progress.

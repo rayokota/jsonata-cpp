@@ -105,11 +105,27 @@ class Utils {
         std::vector<std::any>::iterator insert(
             std::vector<std::any>::const_iterator pos, InputIt first,
             InputIt last) {
-            if (maxLength.has_value()) {
-                checkGrowth(
-                    static_cast<size_t>(std::distance(first, last)));
+            if (!maxLength.has_value()) {
+                return std::vector<std::any>::insert(pos, first, last);
             }
-            return std::vector<std::any>::insert(pos, first, last);
+            if constexpr (std::is_base_of_v<
+                              std::forward_iterator_tag,
+                              typename std::iterator_traits<
+                                  InputIt>::iterator_category>) {
+                checkGrowth(static_cast<size_t>(std::distance(first, last)));
+                return std::vector<std::any>::insert(pos, first, last);
+            } else {
+                // Counting would consume a single-pass iterator, so buffer
+                // its items, checking the bound as they're read
+                std::vector<std::any> items;
+                for (; first != last; ++first) {
+                    checkGrowth(items.size() + 1);
+                    items.emplace_back(*first);
+                }
+                return std::vector<std::any>::insert(
+                    pos, std::make_move_iterator(items.begin()),
+                    std::make_move_iterator(items.end()));
+            }
         }
 
         // Range detection

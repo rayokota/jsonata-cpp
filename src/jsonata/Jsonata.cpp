@@ -172,6 +172,35 @@ std::any callName(const std::shared_ptr<Parser::Symbol>& expr) {
 // function called back into JSONata (see Jsonata::applyNativeFunction)
 thread_local uint64_t applyCount = 0;
 
+// Whether an evaluation on this thread has applied its max sequence length
+// (see SequenceScope)
+thread_local bool sequenceScopeActive = false;
+
+// Applies an expression's max sequence length to the sequences created on this
+// thread while it is alive, then restores the max sequence length of any
+// enclosing evaluation.
+class SequenceScope {
+  public:
+    explicit SequenceScope(std::optional<int64_t> maxSequenceLength)
+        : previousMaxSequenceLength_(
+              Utils::setMaxSequenceLength(maxSequenceLength)),
+          previousActive_(sequenceScopeActive) {
+        sequenceScopeActive = true;
+    }
+
+    ~SequenceScope() {
+        Utils::setMaxSequenceLength(previousMaxSequenceLength_);
+        sequenceScopeActive = previousActive_;
+    }
+
+    SequenceScope(const SequenceScope&) = delete;
+    SequenceScope& operator=(const SequenceScope&) = delete;
+
+  private:
+    std::optional<int64_t> previousMaxSequenceLength_;
+    bool previousActive_;
+};
+
 // Covers one top-level evaluate() call. While it is alive, frames created by
 // createEvaluationFrame() are recorded and sequences are limited to the
 // evaluated expression's max sequence length; when it is destroyed, by a
@@ -184,8 +213,7 @@ class EvaluationScope {
         : previousRegistry_(currentFrameRegistry),
           previousInput_(std::move(Jsonata::tls_input_)),
           previousEnvironment_(std::move(Jsonata::tls_environment_)),
-          previousMaxSequenceLength_(
-              Utils::setMaxSequenceLength(maxSequenceLength)) {
+          sequenceScope_(maxSequenceLength) {
         currentFrameRegistry = &registry_;
     }
 
@@ -194,7 +222,6 @@ class EvaluationScope {
         Jsonata::tls_environment_ = std::move(previousEnvironment_);
         registry_.releaseAll();
         currentFrameRegistry = previousRegistry_;
-        Utils::setMaxSequenceLength(previousMaxSequenceLength_);
     }
 
     EvaluationScope(const EvaluationScope&) = delete;
@@ -205,7 +232,7 @@ class EvaluationScope {
     FrameRegistry* previousRegistry_;
     std::any previousInput_;
     std::shared_ptr<Frame> previousEnvironment_;
-    std::optional<int64_t> previousMaxSequenceLength_;
+    SequenceScope sequenceScope_;
 };
 
 }  // namespace
@@ -281,6 +308,13 @@ std::any Jsonata::evaluate(std::shared_ptr<Parser::Symbol> expr,
                            std::shared_ptr<Frame> environment) {
     // Thread safety: Make sure each evaluate is executed on an instance per
     // thread
+    if (!sequenceScopeActive) {
+        // A top-level evaluation of a parsed expression (e.g. from parse())
+        // applies this instance's max sequence length, while a nested one
+        // (recursive, or from $eval) keeps that of the enclosing evaluation
+        SequenceScope scope(sequence_);
+        return getPerThreadInstance()->_evaluate(expr, input, environment);
+    }
     return getPerThreadInstance()->_evaluate(expr, input, environment);
 }
 

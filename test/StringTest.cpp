@@ -2,6 +2,8 @@
 #include <jsonata/Jsonata.h>
 #include <nlohmann/json.hpp>
 #include <jsonata/JException.h>
+#include <iterator>
+#include <sstream>
 #include <vector>
 #include <memory>
 #include <string>
@@ -329,6 +331,37 @@ TEST_F(StringTest, sequenceGuardrailStopsLargeTupleStreamsTest) {
 TEST_F(StringTest, sequenceGuardrailAllowsExactLimitRangeTest) {
     Jsonata expr("[0..2]", defaultRegexEngine(), std::nullopt, std::nullopt, 3);
     EXPECT_EQ(expr.evaluate(nullptr), nlohmann::ordered_json({0, 1, 2}));
+}
+
+TEST_F(StringTest, sequenceGuardrailAppliesToParsedExpressionsTest) {
+    Jsonata evaluator(defaultRegexEngine(), std::nullopt, std::nullopt, 2);
+    auto ast = evaluator.parse("[0..3]");
+    try {
+        evaluator.evaluate(ast, std::any{}, evaluator.getEnvironment());
+        FAIL() << "Expected JException D2015";
+    } catch (const JException& e) {
+        EXPECT_EQ(e.getError(), "D2015");
+    }
+}
+
+TEST_F(StringTest, sequenceGuardrailInsertsFromSinglePassIteratorsTest) {
+    // Checking the bound mustn't consume the items of a single-pass iterator
+    auto insertInts = [](const std::string& ints, int64_t sequence) {
+        auto previous = Utils::setMaxSequenceLength(sequence);
+        auto list = Utils::createSequence();
+        Utils::setMaxSequenceLength(previous);
+        std::istringstream stream(ints);
+        list.insert(list.end(), std::istream_iterator<int>(stream),
+                    std::istream_iterator<int>());
+        return list.size();
+    };
+    EXPECT_EQ(insertInts("1 2 3", 3), 3u);
+    try {
+        insertInts("1 2 3", 2);
+        FAIL() << "Expected JException D2015";
+    } catch (const JException& e) {
+        EXPECT_EQ(e.getError(), "D2015");
+    }
 }
 
 TEST_F(StringTest, sequenceGuardrailAllowsSequencesWithinLimitTest) {

@@ -2322,6 +2322,9 @@ std::any Functions::append(const Utils::JList& args) {
             array2.push_back(arg2);
         }
 
+        Utils::checkSequenceLength(
+            static_cast<int64_t>(array1.size() + array2.size()));
+
         // Create result array and append both arrays
         // Java line 2093: arg1 = new JList<>((List)arg1); - creates a new
         // regular JList (not sequence)

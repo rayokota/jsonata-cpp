@@ -271,6 +271,61 @@ TEST_F(StringTest, stackGuardrailPropagatesThroughEvalTest) {
     }
 }
 
+// Evaluates the expression with the given `sequence` bound and returns the
+// error code it raised, or an empty string if it didn't raise one
+static std::string sequenceGuardrailError(const std::string& expression,
+                                          int64_t sequence) {
+    Jsonata expr(expression, defaultRegexEngine(), std::nullopt, std::nullopt,
+                 sequence);
+    try {
+        expr.evaluate(nullptr);
+    } catch (const JException& e) {
+        return e.getError();
+    }
+    return "";
+}
+
+TEST_F(StringTest, sequenceGuardrailStopsLargeRangesTest) {
+    EXPECT_EQ(sequenceGuardrailError("[0..1001]", 1000), "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailStopsLargeIntermediateSequencesTest) {
+    EXPECT_EQ(sequenceGuardrailError("[0..100].([0..100]) ~> $count()", 1000),
+              "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailStopsAppendingLargeSequencesTest) {
+    EXPECT_EQ(
+        sequenceGuardrailError("$append([0..600], [0..600]) ~> $count()", 1000),
+        "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailAllowsSequencesWithinLimitTest) {
+    Jsonata expr1("[0..30].([0..30]) ~> $count()", defaultRegexEngine(),
+                  std::nullopt, std::nullopt, 1000);
+    EXPECT_EQ(expr1.evaluate(nullptr), 961);
+    Jsonata expr2("$append([0..499], [0..499]) ~> $count()",
+                  defaultRegexEngine(), std::nullopt, std::nullopt, 1000);
+    EXPECT_EQ(expr2.evaluate(nullptr), 1000);
+}
+
+TEST_F(StringTest, sequenceGuardrailPropagatesThroughEvalTest) {
+    // As with `stack`, jsonata-cpp's functionEval re-throws JException as-is,
+    // so the original D2015 code survives here.
+    EXPECT_EQ(
+        sequenceGuardrailError("$eval('[0..100].([0..100]) ~> $count()')", 1000),
+        "D2015");
+}
+
+TEST_F(StringTest, sequenceGuardrailIsRestoredAfterEvaluateTest) {
+    // The bound only applies to the evaluation of the expression it was
+    // configured on, not to later evaluations on the same thread.
+    EXPECT_EQ(sequenceGuardrailError("[0..100].([0..100]) ~> $count()", 1000),
+              "D2015");
+    Jsonata unlimited("[0..100].([0..100]) ~> $count()");
+    EXPECT_EQ(unlimited.evaluate(nullptr), 10201);
+}
+
 TEST_F(StringTest, regexTest) {
     auto input = makeObject({{"foo", 1}, {"bar", 2}});
     auto result = Jsonata("($matcher := $eval('/^' & 'foo' & '/i'); $.$spread()[$.$keys() ~> $matcher])").evaluate(input);

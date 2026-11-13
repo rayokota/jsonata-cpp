@@ -21,6 +21,7 @@
 #include <any>
 #include <ctime>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -86,6 +87,28 @@ class Utils {
         bool keepSingleton = false;
         bool cons = false;
 
+        // Max number of items this list may hold, set by createSequence()
+        // from the max sequence length guardrail. Growing beyond it throws
+        // D2015.
+        std::optional<int64_t> maxLength;
+
+        // Growth methods that enforce maxLength (hiding std::vector's)
+        void push_back(const std::any& value);
+        void push_back(std::any&& value);
+        using std::vector<std::any>::insert;
+        std::vector<std::any>::iterator insert(
+            std::vector<std::any>::const_iterator pos, const std::any& value);
+        template <class InputIt>
+        std::vector<std::any>::iterator insert(
+            std::vector<std::any>::const_iterator pos, InputIt first,
+            InputIt last) {
+            if (maxLength.has_value()) {
+                checkGrowth(
+                    static_cast<size_t>(std::distance(first, last)));
+            }
+            return std::vector<std::any>::insert(pos, first, last);
+        }
+
         // Range detection
         bool isRange() const { return is_range_; }
 
@@ -149,6 +172,9 @@ class Utils {
         // If this list represents a range, materialize it into a concrete
         // vector
         void materializeRangeIfNeeded();
+
+        // Throws D2015 if adding count items would exceed maxLength
+        void checkGrowth(size_t count) const;
     };
 
     // Type alias for backward compatibility
@@ -179,6 +205,17 @@ class Utils {
     // Sequence and list utilities
     static JList createSequence();
     static JList createSequence(const std::any& el);
+
+    // The max sequence length guardrail of the evaluation running on this
+    // thread (see Jsonata::evaluate), or std::nullopt for no limit
+    static std::optional<int64_t> getMaxSequenceLength();
+    // Sets the max sequence length for evaluations on this thread and
+    // returns the previous one
+    static std::optional<int64_t> setMaxSequenceLength(
+        std::optional<int64_t> sequence);
+    // Throws D2015 if a sequence of the given length would exceed the max
+    // sequence length guardrail
+    static void checkSequenceLength(int64_t length);
 
     // Utility functions
     static bool isSequence(const std::any& result);

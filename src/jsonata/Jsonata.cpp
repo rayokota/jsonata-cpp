@@ -173,16 +173,19 @@ std::any callName(const std::shared_ptr<Parser::Symbol>& expr) {
 thread_local uint64_t applyCount = 0;
 
 // Covers one top-level evaluate() call. While it is alive, frames created by
-// createEvaluationFrame() are recorded; when it is destroyed, by a return or
-// an exception, their bindings are cleared and the thread-local evaluation
-// context is restored to what it was before, so a nested top-level
+// createEvaluationFrame() are recorded and sequences are limited to the
+// evaluated expression's max sequence length; when it is destroyed, by a
+// return or an exception, their bindings are cleared and the thread-local
+// evaluation context is restored to what it was before, so a nested top-level
 // evaluate() (e.g. from a custom function) leaves the outer one intact.
 class EvaluationScope {
   public:
-    EvaluationScope()
+    explicit EvaluationScope(std::optional<int64_t> maxSequenceLength)
         : previousRegistry_(currentFrameRegistry),
           previousInput_(std::move(Jsonata::tls_input_)),
-          previousEnvironment_(std::move(Jsonata::tls_environment_)) {
+          previousEnvironment_(std::move(Jsonata::tls_environment_)),
+          previousMaxSequenceLength_(
+              Utils::setMaxSequenceLength(maxSequenceLength)) {
         currentFrameRegistry = &registry_;
     }
 
@@ -191,6 +194,7 @@ class EvaluationScope {
         Jsonata::tls_environment_ = std::move(previousEnvironment_);
         registry_.releaseAll();
         currentFrameRegistry = previousRegistry_;
+        Utils::setMaxSequenceLength(previousMaxSequenceLength_);
     }
 
     EvaluationScope(const EvaluationScope&) = delete;
@@ -201,6 +205,7 @@ class EvaluationScope {
     FrameRegistry* previousRegistry_;
     std::any previousInput_;
     std::shared_ptr<Frame> previousEnvironment_;
+    std::optional<int64_t> previousMaxSequenceLength_;
 };
 
 }  // namespace
@@ -226,8 +231,8 @@ void Frame::setEvaluateExitCallback(ExitCallback callback) {
 
 // Jsonata implementation
 Jsonata::Jsonata(RegexEngine regexEngine, std::optional<int64_t> timeout,
-                 std::optional<int64_t> stack)
-    : regexEngine_(regexEngine) {
+                 std::optional<int64_t> stack, std::optional<int64_t> sequence)
+    : regexEngine_(regexEngine), sequence_(sequence) {
     parser_ = std::make_unique<Parser>();
     currentInstance_ = this;
     // Initialize environment like Java does: environment =
@@ -260,8 +265,9 @@ std::shared_ptr<Frame> Jsonata::createEvaluationFrame(
 
 Jsonata Jsonata::jsonata(const std::string& expression, RegexEngine regexEngine,
                          std::optional<int64_t> timeout,
-                         std::optional<int64_t> stack) {
-    Jsonata instance(expression, regexEngine, timeout, stack);
+                         std::optional<int64_t> stack,
+                         std::optional<int64_t> sequence) {
+    Jsonata instance(expression, regexEngine, timeout, stack, sequence);
     // Parse and store the expression
     return instance;
 }
@@ -1417,6 +1423,7 @@ std::any Jsonata::evaluateRangeExpression(const std::any& lhs,
         if (size > 1e7) {
             throw JException("D2014", -1, size);
         }
+        Utils::checkSequenceLength(size);
 
         // Java reference line 1210: Return JList as range (lazy like Java)
         return Utils::JList(start, end);
@@ -2561,8 +2568,9 @@ Jsonata* Jsonata::getPerThreadInstance() {
 }
 
 Jsonata::Jsonata(const std::string& jsonataExpression, RegexEngine regexEngine,
-                 std::optional<int64_t> timeout, std::optional<int64_t> stack)
-    : regexEngine_(regexEngine) {
+                 std::optional<int64_t> timeout, std::optional<int64_t> stack,
+                 std::optional<int64_t> sequence)
+    : regexEngine_(regexEngine), sequence_(sequence) {
     currentInstance_ = this;
     // Initialize environment like Java does: environment =
     // createFrame(staticFrame)
@@ -2576,7 +2584,8 @@ Jsonata::Jsonata(const std::string& jsonataExpression, RegexEngine regexEngine,
     expression_ = parser.parse(jsonataExpression, false, regexEngine_);
 }
 
-Jsonata::Jsonata(const Jsonata& other) : regexEngine_(other.regexEngine_) {
+Jsonata::Jsonata(const Jsonata& other)
+    : regexEngine_(other.regexEngine_), sequence_(other.sequence_) {
     // Copy constructor matching Java implementation: Jsonata(Jsonata other)
     // this.ast = other.ast;
     // this.environment = other.environment;
@@ -2600,7 +2609,7 @@ nlohmann::ordered_json Jsonata::evaluate(const nlohmann::ordered_json& input,
     }
 
     // Releases the frames this evaluation creates once it finishes.
-    EvaluationScope scope;
+    EvaluationScope scope(sequence_);
 
     // Convert JSON input to std::any domain for the evaluator
     std::any anyInput = orderedJsonToAny(input);
@@ -2679,7 +2688,7 @@ nlohmann::json Jsonata::evaluate(const nlohmann::json& input,
     }
 
     // Releases the frames this evaluation creates once it finishes.
-    EvaluationScope scope;
+    EvaluationScope scope(sequence_);
 
     // Convert JSON input to std::any domain for the evaluator
     std::any anyInput = jsonToAny(input);

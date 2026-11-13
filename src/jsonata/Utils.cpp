@@ -273,11 +273,34 @@ bool Utils::isFunction(const std::any& o) {
     return false;
 }
 
+namespace {
+// The max sequence length guardrail of the evaluation running on this thread
+thread_local std::optional<int64_t> maxSequenceLength;
+}  // namespace
+
+std::optional<int64_t> Utils::getMaxSequenceLength() {
+    return maxSequenceLength;
+}
+
+std::optional<int64_t> Utils::setMaxSequenceLength(
+    std::optional<int64_t> sequence) {
+    auto previous = maxSequenceLength;
+    maxSequenceLength = sequence;
+    return previous;
+}
+
+void Utils::checkSequenceLength(int64_t length) {
+    if (maxSequenceLength.has_value() && length > *maxSequenceLength) {
+        throw JException("D2015", -1, length);
+    }
+}
+
 Utils::JList Utils::createSequence() { return createSequence(NONE); }
 
 Utils::JList Utils::createSequence(const std::any& el) {
     JList sequence;
     sequence.sequence = true;
+    sequence.maxLength = maxSequenceLength;
 
     // Detect the special NONE sentinel and do not add it to the sequence
     bool isNoneSentinel = false;
@@ -511,6 +534,30 @@ Utils::JList::JList(const JList& other)
     tupleStream = other.tupleStream;
     keepSingleton = other.keepSingleton;
     cons = other.cons;
+    maxLength = other.maxLength;
+}
+
+void Utils::JList::checkGrowth(size_t count) const {
+    if (maxLength.has_value() &&
+        static_cast<int64_t>(size() + count) > *maxLength) {
+        throw JException("D2015", -1, *maxLength);
+    }
+}
+
+void Utils::JList::push_back(const std::any& value) {
+    checkGrowth(1);
+    std::vector<std::any>::push_back(value);
+}
+
+void Utils::JList::push_back(std::any&& value) {
+    checkGrowth(1);
+    std::vector<std::any>::push_back(std::move(value));
+}
+
+std::vector<std::any>::iterator Utils::JList::insert(
+    std::vector<std::any>::const_iterator pos, const std::any& value) {
+    checkGrowth(1);
+    return std::vector<std::any>::insert(pos, value);
 }
 
 // Range constructor

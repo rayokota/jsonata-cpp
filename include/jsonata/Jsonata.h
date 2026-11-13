@@ -133,17 +133,21 @@ class Jsonata {
   public:
     // Constructors
     //
-    // timeout/stack configure the optional evaluation guardrails (D1012/D1011):
-    // timeout is a wall-clock limit in milliseconds, stack limits the depth of
-    // the eval-apply cycle. Either may be left unset (std::nullopt) to leave
-    // that guardrail disabled.
+    // timeout/stack/sequence configure the optional evaluation guardrails
+    // (D1012/D1011/D2015): timeout is a wall-clock limit in milliseconds,
+    // stack limits the depth of the eval-apply cycle, and sequence limits the
+    // length of any sequence (including intermediate sequences) created
+    // during evaluation. Any may be left unset (std::nullopt) to leave that
+    // guardrail disabled.
     explicit Jsonata(RegexEngine regexEngine = defaultRegexEngine(),
                      std::optional<int64_t> timeout = std::nullopt,
-                     std::optional<int64_t> stack = std::nullopt);
+                     std::optional<int64_t> stack = std::nullopt,
+                     std::optional<int64_t> sequence = std::nullopt);
     Jsonata(const std::string& jsonataExpression,
            RegexEngine regexEngine = defaultRegexEngine(),
            std::optional<int64_t> timeout = std::nullopt,
-           std::optional<int64_t> stack = std::nullopt);
+           std::optional<int64_t> stack = std::nullopt,
+           std::optional<int64_t> sequence = std::nullopt);
     Jsonata(const Jsonata& other);  // Copy constructor for per-thread instances
 
     // Main evaluation methods (ordered JSON variants)
@@ -176,7 +180,8 @@ class Jsonata {
     static Jsonata jsonata(const std::string& expression,
                           RegexEngine regexEngine = defaultRegexEngine(),
                           std::optional<int64_t> timeout = std::nullopt,
-                          std::optional<int64_t> stack = std::nullopt);
+                          std::optional<int64_t> stack = std::nullopt,
+                          std::optional<int64_t> sequence = std::nullopt);
 
     // Instance methods (matching Java reference)
     std::shared_ptr<Frame> createFrame();
@@ -220,6 +225,8 @@ class Jsonata {
 
     std::shared_ptr<Frame> environment_;
     RegexEngine regexEngine_ = defaultRegexEngine();
+    // Max sequence length guardrail (D2015), or std::nullopt for no limit
+    std::optional<int64_t> sequence_;
     static thread_local std::shared_ptr<class Parser> currentParser_;
     static thread_local std::any tls_input_;
     static thread_local std::shared_ptr<Frame> tls_environment_;
